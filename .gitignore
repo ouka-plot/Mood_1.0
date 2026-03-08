@@ -57,6 +57,7 @@ Makefile
 
 # nRF Connect SDK / Zephyr build output
 nrf52832_ble_bridge/build/
+_cmsis_dsp_temp/
 
 # Python cache
 __pycache__/
