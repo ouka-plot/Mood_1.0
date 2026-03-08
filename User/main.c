@@ -22,12 +22,24 @@
   #include "./TEXT/text.h"
 #include "./BSP/ES8388/es8388.h"
 #include "./APP/audioplay.h"
+#include "./APP/audio_monitor.h"
+#include "./APP/tinyml_task.h"
+#include "./APP/audio_spectrum.h"
+#include "./APP/audio_eq.h"
+#include "./APP/eq_ctrl_uart.h"
 
 #include "./FATFS/source/ff.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "timers.h"
 #include "semphr.h"
+#include "lvgl.h"
+#include "lv_port_disp.h"
+#include "lv_port_indev.h"
+#include "gui_guider.h"
+#include "./APP/audio_ui_bridge.h"
+
+
 
 //定义全局的文件系统对象
 FATFS fs;
@@ -35,28 +47,10 @@ FIL file;
 UINT br;
 uint8_t read_buf[100];
 
-
-//定义任务堆栈的内存地址和大小
-static const HeapRegion_t xHeapRegions[] =
-{
-	{(uint8_t *)0x10000000UL, 0x10000},		//CCM		64kByte
-	{NULL, 0}
-};
-
-
-/**
- * @brief       获得时间
- * @param       mf  : 内存首地址
- * @retval      时间
- *   @note      时间编码规则如下:
- *              User defined function to give a current time to fatfs module 
- *              31-25: Year(0-127 org.1980), 24-21: Month(1-12), 20-16: Day(1-31)
- *              15-11: Hour(0-23), 10-5: Minute(0-59), 4-0: Second(0-29 *2) 
- */
-DWORD get_fattime (void)
-{
-    return 0;
-}
+/* FreeRTOS堆放到CCM RAM (0x10000000, 64KB)
+ * 使用 NOLOAD 段避免64KB零数据占用FLASH
+ * heap_4 通过 configAPPLICATION_ALLOCATED_HEAP 使用此外部数组 */
+uint8_t ucHeap[configTOTAL_HEAP_SIZE] __attribute__((section(".ccmram_bss")));
 
 
 /**
@@ -118,8 +112,6 @@ void test_fun(void(*ledset)(uint8_t), uint8_t sta)
 static void vLed_Task(void *pvParameters)
 {
 	static portTickType xLastWakeTime;
-	
-
 	xLastWakeTime = xTaskGetTickCount();
 	for (;;)
 	{
@@ -128,12 +120,31 @@ static void vLed_Task(void *pvParameters)
 	}
 }
 
+/* LVGL GUI task - calls lv_timer_handler() periodically */
+static void vLvgl_Task(void *pvParameters)
+{
+	for (;;)
+	{
+		audio_ui_update_lvgl();  /* 将音频状态同步到LVGL控件 */
+		lv_timer_handler();
+		vTaskDelay(5 / portTICK_RATE_MS);  /* 5ms period */
+	}
+}
+
+static void vEqCtrl_Task(void *pvParameters)
+{
+	for (;;)
+	{
+		eq_ctrl_uart_poll();
+		vTaskDelay(5 / portTICK_RATE_MS);
+	}
+}
+
 
 
 static void vAudio_Task(void *pvParameters)
 {
-
-	
+	audio_spectrum_init();  /* 初始化频谱分析模块 */
 	audio_play();
 	vTaskDelay(10);
 	for (;;)
@@ -141,6 +152,24 @@ static void vAudio_Task(void *pvParameters)
 	
 	}
 }
+
+/* 音频检测回调函数 - 检测到高频声音(婴儿哭声)时调用 */
+static void audio_detect_callback(uint8_t detected, uint32_t energy, uint16_t zcr)
+{
+    if (detected)
+    {
+        printf("[AudioMonitor] High-freq sound DETECTED! Energy=%lu, ZCR=%u\r\n", energy, zcr);
+        LED0(0);  /* 点亮LED0表示检测到 */
+    }
+    else
+    {
+        printf("[AudioMonitor] Sound stopped. Energy=%lu, ZCR=%u\r\n", energy, zcr);
+        LED0(1);  /* 熄灭LED0 */
+    }
+}
+
+/* 音频监听任务外部声明 */
+extern TaskHandle_t g_audio_monitor_task_handle;
 
 
 int main(void)
@@ -158,41 +187,52 @@ int main(void)
     sys_stm32_clock_init(336, 8, 2, 7); /* 设置时钟,168Mhz */
     delay_init(168);                    /* 延时初始化 */
 	usart_init(115200);                     /* 串口初始化为115200 */
- 	usmart_dev.init(84);                    /* USMART初始化 */
+ 	usmart_init(84);                        /* USMART初始化 */
     led_init();                         /* 初始化LED */
     key_init();                         /* 初始化KEY */
-	lcd_init();                             /* 初始化LCD */
-	LED0(0);
+	lcd_init();  
+                               /* 初始化LCD */
+    lv_init();
+    lv_port_disp_init();
+    lv_port_indev_init();
+
+    /* 初始化播放器界面(screen_1)并加载 */
+    audio_ui_init_screen();
+
+	LED0(1);
 	
-	     while (sd_init())                       /* 检测SD卡 */
-    {
-        lcd_show_string(30, 50, 200, 16, 16, "SD Card Failed!", RED);
-        delay_ms(200);
-        lcd_fill(30, 50, 200 + 30, 50 + 16, WHITE);
-        delay_ms(200);
-    }
+	//      while (sd_init())                       /* 检测SD卡 */
+    // {
+    //     lcd_show_string(30, 50, 200, 16, 16, "SD Card Failed!", RED);
+    //     delay_ms(200);
+    //     lcd_fill(30, 50, 200 + 30, 50 + 16, WHITE);
+    //     delay_ms(200);
+    // }
     f_mount(&fs, "0:", 1);        /* 挂载SD卡 */
 
     
     es8388_init();              /* ES8388初始化 */
     es8388_adda_cfg(1, 0);      /* 开启DAC关闭ADC */
-    es8388_output_cfg(1, 1);    /* DAC选择通道输出 */
-    es8388_hpvol_set(25);       /* 设置耳机音量 */
-    es8388_spkvol_set(0); /* 设置喇叭音量 */
+    es8388_output_cfg(1, 0);    /* OUT1(耳机)开, OUT2(喇叭)关 */
+    es8388_hpvol_set(10);       /* 设置耳机音量 (0~33) */
+    es8388_spkvol_set(0);       /* 设置喇叭音量 */
+	audio_ui_set_volume(33);     /* 同步默认耳机音量到UI(10/30约等于33%) */
+	audio_eq_init();
+	eq_ctrl_uart_init(115200);
     
-    text_show_string(30, 30, 200, 16, "正点原子STM32开发板", 16, 0, RED);
-    text_show_string(30, 50, 200, 16, "音乐播放器实验", 16, 0, RED);
-    text_show_string(30, 70, 200, 16, "正点原子@ALIENTEK", 16, 0, RED);
-    text_show_string(30, 90, 200, 16, "2021年11月16日", 16, 0, RED);
-    text_show_string(30, 110, 200, 16, "KEY0:NEXT   KEY2:PREV", 16, 0, RED);
-    text_show_string(30, 130, 200, 16, "KEY_UP:PAUSE/PLAY", 16, 0, RED);
+    // text_show_string(30, 30, 200, 16, "正点原子STM32开发板", 16, 0, RED);
+    // text_show_string(30, 50, 200, 16, "音乐播放器实验", 16, 0, RED);
+    // text_show_string(30, 70, 200, 16, "正点原子@ALIENTEK", 16, 0, RED);
+    // text_show_string(30, 90, 200, 16, "2021年11月16日", 16, 0, RED);
+    // text_show_string(30, 110, 200, 16, "KEY0:NEXT   KEY2:PREV", 16, 0, RED);
+    // text_show_string(30, 130, 200, 16, "KEY_UP:PAUSE/PLAY", 16, 0, RED);
     
 	
 		xTaskCreate(vAudio_Task, \
 				"Audio", \
 				1024, \
 				NULL, \
-				2, \
+				3, \
 				NULL);
 	xTaskCreate(vLed_Task, \
 				"Led", \
@@ -200,8 +240,40 @@ int main(void)
 				NULL, \
 				2, \
 				NULL);
+
+	xTaskCreate(vLvgl_Task, \
+				"LVGL", \
+				512, \
+				NULL, \
+				2, \
+				NULL);
+
+	xTaskCreate(vEqCtrl_Task, \
+				"EqCtrl", \
+				256, \
+				NULL, \
+				1, \
+				NULL);
 	
+	/* 创建音频监听任务 */
+	xTaskCreate(vAudioMonitor_Task, \
+				"AudioMon", \
+				256, \
+				NULL, \
+				2, \
+				&g_audio_monitor_task_handle);
 	
+	/* 设置检测回调并启动后台监听 */
+	audio_monitor_set_callback(audio_detect_callback);
+	/* 注意：实际启动监听需要在音频系统初始化好后调用 audio_monitor_start() */
+	
+	/* 创建TinyML推理任务 */
+	xTaskCreate(vTinyML_Task, \
+				"TinyML", \
+				TINYML_TASK_STACK_SIZE, \
+				NULL, \
+				TINYML_TASK_PRIORITY, \
+				&g_tinyml_task_handle);
 	
 	vTaskStartScheduler();
 	
@@ -209,9 +281,8 @@ int main(void)
 	
     while (1)
     {
-        audio_play();           /* 播放音乐 */
+        //audio_play();           /* 播放音乐 */
     }
-
  }
 
  
@@ -219,20 +290,18 @@ int main(void)
 //FreeRTOS 钩子函数
 void vApplicationMallocFailedHook(void)
 {
-//	log_record("\r\n#[error_msg]: Malloc failed!\r\n");
-//	__set_PRIMASK(1);
+	printf("[FreeRTOS] ERROR: pvPortMalloc failed!\r\n");
 	for (;;)
 	{
-		;
+		vTaskDelay(portMAX_DELAY);
 	}
 }
 
 void vApplicationStackOverflowHook(TaskHandle_t pxTask, char *pcTaskName)
 {
-//	log_record("\r\n#[error_msg]: Stack overflow! Handle: %x, Task: %s\r\n", pxTask, pcTaskName);
-//	__set_PRIMASK(1);
+	printf("[FreeRTOS] ERROR: Stack overflow! Task: %s\r\n", pcTaskName);
 	for (;;)
 	{
-		;
+		vTaskDelay(portMAX_DELAY);
 	}
 }

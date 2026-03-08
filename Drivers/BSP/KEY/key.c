@@ -1,6 +1,13 @@
 #include "BSP/KEY/key.h"
 #include "SYSTEM/delay/delay.h"
 
+/* 按键状态变量（全局唯一实例） */
+static uint8_t s_key_state;         // 按键的当前持续状态
+static uint8_t s_key_down;          // 按键的"按下"事件
+static uint8_t s_key_up;            // 按键的"松开"事件
+static uint8_t s_debounce_state;    // 消抖过程中的中间状态
+static uint8_t s_debounce_counter;  // 消抖计数器
+
 
 
 void key_init()

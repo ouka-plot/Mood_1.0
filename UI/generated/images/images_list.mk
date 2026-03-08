@@ -1,0 +1,1 @@
+GEN_CSRCS += _hour_needle_white_alpha_70x8.c _min_needle_white_alpha_105x8.c _second_needle_2_alpha_130x5.c _5_131x125.c

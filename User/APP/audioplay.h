@@ -33,7 +33,7 @@
 
 
 /* 音乐播放控制器 */
-typedef __packed struct
+typedef struct __attribute__((packed))
 {  
     uint8_t *i2sbuf1;           /* I2S解码的BUF */
     uint8_t *i2sbuf2;
@@ -42,7 +42,7 @@ typedef __packed struct
 
     uint8_t status;             /* bit0:0,暂停播放;1,继续播放 */
                                 /* bit1:0,结束播放;1,开启播放 */
-}__audiodev;
+} __audiodev;
 
 extern __audiodev g_audiodev;   /* 音乐播放控制器 */
 

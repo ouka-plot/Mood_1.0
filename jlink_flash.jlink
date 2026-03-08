@@ -1,0 +1,28 @@
+// J-Link Commander Script for STM32F407ZGTx
+// 用于烧录 Mood_1.0 固件
+
+// 连接设备
+si SWD
+speed 1000
+device STM32F407ZG
+connect
+
+// 复位并停止
+r
+h
+
+// 擦除Flash (可选,如需全擦除取消注释)
+// erase
+
+// 加载固件
+loadbin Output/Mood_1.0.bin,0x08000000
+
+// 验证
+verifybin Output/Mood_1.0.bin,0x08000000
+
+// 复位并运行
+r
+g
+
+// 退出
+qc

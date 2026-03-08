@@ -28,6 +28,7 @@
 
 I2S_HandleTypeDef g_i2s_handle;         /* I2S句柄 */
 DMA_HandleTypeDef g_i2s_txdma_handle;   /* I2S发送DMA句柄 */
+DMA_HandleTypeDef g_i2s_rxdma_handle;   /* I2S接收DMA句柄 */
 
 /**
  * @brief       I2S初始化
@@ -254,9 +255,141 @@ void i2s_play_stop(void)
     __HAL_DMA_DISABLE(&g_i2s_txdma_handle);  /* 关闭DMA TX传输 */
 }
 
+/***************************************************************************************
+ *                              I2S RX (录音/监听) 部分
+ ***************************************************************************************/
 
+void (*i2s_rx_callback)(void);  /* I2S RX DMA回调函数指针 */
 
+/**
+ * @brief       I2S RX DMA配置 (使用I2S2ext进行接收)
+ * @note        设置为双缓冲模式,并开启DMA传输完成中断
+ * @param       buf0 : M0AR地址
+ * @param       buf1 : M1AR地址
+ * @param       num  : 每次传输数据量(16位数据的个数)
+ * @retval      无
+ */
+void i2s_rx_dma_init(uint8_t* buf0, uint8_t *buf1, uint16_t num)
+{
+    I2S_RX_DMA_CLK_ENABLE();    /* 使能I2S RX DMA时钟 */
+    
+    __HAL_LINKDMA(&g_i2s_handle, hdmarx, g_i2s_rxdma_handle);              /* 将DMA与I2S联系起来 */
 
+    g_i2s_rxdma_handle.Instance = I2S_RX_DMASx;                            /* 设置I2S RX DMA数据流 */
+    g_i2s_rxdma_handle.Init.Channel = I2S_RX_DMASx_Channel;                /* 设置I2S RX DMA通道 */
+    g_i2s_rxdma_handle.Init.Direction = DMA_PERIPH_TO_MEMORY;              /* 外设到存储器模式 */
+    g_i2s_rxdma_handle.Init.PeriphInc = DMA_PINC_DISABLE;                  /* 外设非增量模式 */
+    g_i2s_rxdma_handle.Init.MemInc = DMA_MINC_ENABLE;                      /* 存储器增量模式 */
+    g_i2s_rxdma_handle.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD; /* 外设数据长度:16位 */
+    g_i2s_rxdma_handle.Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;    /* 存储器数据长度:16位 */
+    g_i2s_rxdma_handle.Init.Mode = DMA_CIRCULAR;                           /* 使用循环模式 */
+    g_i2s_rxdma_handle.Init.Priority = DMA_PRIORITY_MEDIUM;                /* 中等优先级 */
+    g_i2s_rxdma_handle.Init.FIFOMode = DMA_FIFOMODE_DISABLE;               /* 不使用FIFO */
+    g_i2s_rxdma_handle.Init.MemBurst = DMA_MBURST_SINGLE;                  /* 存储器单次突发传输 */
+    g_i2s_rxdma_handle.Init.PeriphBurst = DMA_PBURST_SINGLE;               /* 外设突发单次传输 */
+    HAL_DMA_DeInit(&g_i2s_rxdma_handle);                                   /* 先清除以前的设置 */
+    HAL_DMA_Init(&g_i2s_rxdma_handle);                                     /* 初始化DMA */
 
+    /* 开启双缓冲模式，从I2S2ext的DR寄存器读取数据 */
+    HAL_DMAEx_MultiBufferStart(&g_i2s_rxdma_handle, (uint32_t)&I2S2ext->DR, (uint32_t)buf0, (uint32_t)buf1, num);
+
+    delay_us(10);                                                          /* 10us延时，防止-O2优化出问题 */
+    __HAL_DMA_ENABLE_IT(&g_i2s_rxdma_handle, DMA_IT_TC);                   /* 开启传输完成中断 */
+    __HAL_DMA_CLEAR_FLAG(&g_i2s_rxdma_handle, I2S_RX_DMASx_FLAG);          /* 清除DMA传输完成中断标志位 */
+    HAL_NVIC_SetPriority(I2S_RX_DMASx_IRQ, 1, 0);                          /* DMA中断优先级 */
+    HAL_NVIC_EnableIRQ(I2S_RX_DMASx_IRQ);
+
+    __HAL_DMA_DISABLE(&g_i2s_rxdma_handle);                                /* 先关闭DMA */
+}
+
+/**
+ * @brief       I2S RX DMA 中断服务函数
+ * @param       无
+ * @retval      无
+ */
+void I2S_RX_DMASx_Handle(void)
+{
+    if (__HAL_DMA_GET_FLAG(&g_i2s_rxdma_handle, I2S_RX_DMASx_FLAG) != RESET)   /* DMA传输完成 */
+    {
+        __HAL_DMA_CLEAR_FLAG(&g_i2s_rxdma_handle, I2S_RX_DMASx_FLAG);          /* 清除DMA传输完成中断标志位 */
+
+        if (i2s_rx_callback != NULL)
+        {
+            i2s_rx_callback();  /* 执行回调函数,处理接收到的音频数据 */
+        }
+    }
+}
+
+/**
+ * @brief       初始化I2S2ext用于全双工模式的接收
+ * @note        在调用i2s_init()之后调用此函数
+ * @retval      无
+ */
+void i2s2ext_init(void)
+{
+    uint32_t tmpreg = 0;
+    
+    /* 配置I2S2ext (与I2S2共享时钟，作为从设备接收) */
+    /* I2S2ext的I2SCFGR寄存器配置 */
+    tmpreg = I2S2ext->I2SCFGR;
+    tmpreg &= ~(0x0FFFU);  /* 清除配置位 */
+    
+    /* 设置为从机接收模式 */
+    tmpreg |= SPI_I2SCFGR_I2SMOD;       /* I2S模式 */
+    tmpreg |= SPI_I2SCFGR_I2SCFG_0;     /* 从机接收 (01) */
+    
+    /* 复制I2S2的数据格式配置 */
+    if (I2S_SPI->I2SCFGR & SPI_I2SCFGR_DATLEN)
+    {
+        tmpreg |= (I2S_SPI->I2SCFGR & SPI_I2SCFGR_DATLEN);
+    }
+    if (I2S_SPI->I2SCFGR & SPI_I2SCFGR_CHLEN)
+    {
+        tmpreg |= SPI_I2SCFGR_CHLEN;
+    }
+    
+    I2S2ext->I2SCFGR = tmpreg;
+    
+    /* 使能I2S2ext的DMA接收请求 */
+    I2S2ext->CR2 |= SPI_CR2_RXDMAEN;
+    
+    /* 使能I2S2ext */
+    I2S2ext->I2SCFGR |= SPI_I2SCFGR_I2SE;
+}
+
+/**
+ * @brief       全双工初始化(同时播放和录音/监听)
+ * @param       samplerate : 采样率 (Hz)
+ * @retval      无
+ */
+void i2s_fullduplex_init(uint32_t samplerate)
+{
+    /* I2S2已经在i2s_init()中初始化为主发送模式 */
+    /* 设置采样率 */
+    i2s_samplerate_set(samplerate);
+    
+    /* 初始化I2S2ext用于接收 */
+    i2s2ext_init();
+}
+
+/**
+ * @brief       开始录音/监听
+ * @param       无
+ * @retval      无
+ */
+void i2s_record_start(void)
+{
+    __HAL_DMA_ENABLE(&g_i2s_rxdma_handle);  /* 开启DMA RX传输 */
+}
+
+/**
+ * @brief       停止录音/监听
+ * @param       无
+ * @retval      无
+ */
+void i2s_record_stop(void)
+{
+    __HAL_DMA_DISABLE(&g_i2s_rxdma_handle);  /* 关闭DMA RX传输 */
+}
 
 

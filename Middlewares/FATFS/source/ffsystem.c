@@ -25,6 +25,7 @@
 //#include "./MALLOC/malloc.h"
 #include "./SYSTEM/sys/sys.h"
 #include "./FATFS/source/ff.h"
+#include <stdlib.h>
 
 
 /**
@@ -48,7 +49,7 @@ DWORD get_fattime (void)
  */
 void *ff_memalloc (UINT size)
 {
-    return (void*)mymalloc(SRAMIN,size);
+    return malloc(size);
 }
 
 /**
@@ -58,7 +59,7 @@ void *ff_memalloc (UINT size)
  */
 void ff_memfree (void* mf)
 {
-    myfree(SRAMIN,mf);
+    free(mf);
 }
 
 

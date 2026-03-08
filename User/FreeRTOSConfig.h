@@ -89,6 +89,7 @@
 
 #endif
 
+#define configAPPLICATION_ALLOCATED_HEAP	1
 #define configUSE_PREEMPTION			1
 #define configUSE_IDLE_HOOK				0
 #define configUSE_TICK_HOOK				0
@@ -164,6 +165,17 @@ standard names. */
 #define vPortSVCHandler SVC_Handler
 #define xPortPendSVHandler PendSV_Handler
 //#define xPortSysTickHandler SysTick_Handler
+
+/* Trace macros (required by FreeRTOS v10+ port but not defined in v9 kernel) */
+#ifndef traceISR_ENTER
+    #define traceISR_ENTER()
+#endif
+#ifndef traceISR_EXIT_TO_SCHEDULER
+    #define traceISR_EXIT_TO_SCHEDULER()
+#endif
+#ifndef traceISR_EXIT
+    #define traceISR_EXIT()
+#endif
 
 #endif /* FREERTOS_CONFIG_H */
 

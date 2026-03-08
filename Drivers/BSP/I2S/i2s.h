@@ -62,10 +62,20 @@
 #define I2S_TX_DMASx_FLAG               DMA_FLAG_TCIF0_4
 #define I2S_TX_DMA_CLK_ENABLE()         do{ __HAL_RCC_DMA1_CLK_ENABLE(); }while(0)   /* I2S2 TX DMA时钟使能 */
 
+/* I2S RX DMA配置 (I2S2ext使用DMA1_Stream3, Channel 3) */  
+#define I2S_RX_DMASx                    DMA1_Stream3
+#define I2S_RX_DMASx_Channel            DMA_CHANNEL_3
+#define I2S_RX_DMASx_Handle             DMA1_Stream3_IRQHandler
+#define I2S_RX_DMASx_IRQ                DMA1_Stream3_IRQn
+#define I2S_RX_DMASx_FLAG               DMA_FLAG_TCIF3_7
+#define I2S_RX_DMA_CLK_ENABLE()         do{ __HAL_RCC_DMA1_CLK_ENABLE(); }while(0)   /* I2S2 RX DMA时钟使能 */
+
+/* I2S2ext 已在stm32f407xx.h中定义，无需重复定义 */
 
 /*****************************************************************************************************/
 
 extern void (*i2s_tx_callback)(void);   /* I2S TX回调函数指针  */
+extern void (*i2s_rx_callback)(void);   /* I2S RX回调函数指针  */
 
 void i2s_init(uint32_t i2s_standard, uint32_t i2s_mode, uint32_t i2s_clock_polarity, uint32_t i2s_dataformat);  /* I2S初始化 */
 void i2s_dma_enable(void);      /* 开启I2S的DMA功能 */
@@ -73,6 +83,13 @@ uint8_t i2s_samplerate_set(uint32_t samplerate);    /* 设置I2S的采样率 */
 void i2s_tx_dma_init(uint8_t* buf0, uint8_t *buf1, uint16_t num);   /* I2S TX DMA配置 */
 void i2s_play_start(void);      /* I2S开始播放 */
 void i2s_play_stop(void);       /* I2S停止播放 */
+
+/* I2S RX (录音/监听) 功能 */
+void i2s_rx_dma_init(uint8_t* buf0, uint8_t *buf1, uint16_t num);   /* I2S RX DMA配置 */
+void i2s_record_start(void);    /* 开始录音/监听 */
+void i2s_record_stop(void);     /* 停止录音/监听 */
+void i2s_fullduplex_init(uint32_t samplerate);  /* 全双工初始化(同时播放和录音) */
+void i2s2ext_init(void);    /* 初始化I2S2ext从设备接收 */
 
 #endif
 

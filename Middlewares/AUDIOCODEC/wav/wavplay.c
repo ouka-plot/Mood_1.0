@@ -33,6 +33,12 @@
 #include "./BSP/ES8388/es8388.h"
 #include "./BSP/KEY/key.h"
 #include "./BSP/LED/led.h"
+#include "./APP/audio_ui_bridge.h"
+#include "./APP/audio_spectrum.h"
+#include "./APP/audio_eq.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "./APP/audio_monitor.h"
    volatile uint8_t g_debug_key=0;
    /* 
  * 全局静态缓冲区定义 
@@ -286,6 +292,14 @@ uint8_t wav_play_song(char* fname)
             }
             
             i2s_samplerate_set(wavctrl.samplerate);     /* 设置采样率 */
+            audio_eq_set_sample_rate(wavctrl.samplerate);
+            
+            /* 重新初始化I2S2ext, 因为i2s_init()会重置I2S2外设 */
+            if (audio_monitor_get_mode() != AUDIO_MONITOR_MODE_OFF) {
+                i2s2ext_init();
+                i2s_record_start();
+            }
+            
             i2s_tx_dma_init(g_audiodev.i2sbuf1, g_audiodev.i2sbuf2, WAV_I2S_TX_DMA_BUFSIZE / 2);   /* 配置TX DMA */
             i2s_tx_callback = wav_i2s_dma_tx_callback;  /* 回调函数指wav_i2s_dma_callback */
             audio_stop();
@@ -297,13 +311,16 @@ uint8_t wav_play_song(char* fname)
                 f_lseek(g_audiodev.file, wavctrl.datastart);          /* 跳过文件头 */
                 
                 fillnum = wav_buffill(g_audiodev.i2sbuf1, WAV_I2S_TX_DMA_BUFSIZE, wavctrl.bps);
+                audio_eq_process_buffer(g_audiodev.i2sbuf1, fillnum, wavctrl.bps, wavctrl.nchannels);
                 fillnum = wav_buffill(g_audiodev.i2sbuf2, WAV_I2S_TX_DMA_BUFSIZE, wavctrl.bps);
+                audio_eq_process_buffer(g_audiodev.i2sbuf2, fillnum, wavctrl.bps, wavctrl.nchannels);
                 
                 audio_start();  
+                audio_ui_set_playing(1);  /* 通知UI：开始播放 */
                 
                 while (res == 0)
                 { 
-                    while(wavtransferend == 0);             /* 等待wav传输完成; */
+                    while(wavtransferend == 0) { vTaskDelay(1); }  /* 等待wav传输完成, 让出CPU给LVGL */
                     
                     wavtransferend = 0;
                     
@@ -316,47 +333,65 @@ uint8_t wav_play_song(char* fname)
                     if (wavwitchbuf)
                     {
                         fillnum = wav_buffill(g_audiodev.i2sbuf2, WAV_I2S_TX_DMA_BUFSIZE, wavctrl.bps);   /* 填充buf2 */
+                        audio_eq_process_buffer(g_audiodev.i2sbuf2, fillnum, wavctrl.bps, wavctrl.nchannels);
                     }
                     else
                     {
                         fillnum = wav_buffill(g_audiodev.i2sbuf1, WAV_I2S_TX_DMA_BUFSIZE, wavctrl.bps);   /* 填充buf1 */
+                        audio_eq_process_buffer(g_audiodev.i2sbuf1, fillnum, wavctrl.bps, wavctrl.nchannels);
+                    }
+                    
+                    /* ===== 实时频谱分析 (每3帧计算一次, ~14FPS) ===== */
+                    {
+                        static uint8_t spec_skip = 0;
+                        if (++spec_skip >= 3) {
+                            spec_skip = 0;
+                            uint8_t spec_bars[SPECTRUM_NUM_BARS];
+                            const uint8_t *pcm_ptr = wavwitchbuf ? g_audiodev.i2sbuf2 : g_audiodev.i2sbuf1;
+                            audio_spectrum_calc(pcm_ptr, fillnum, wavctrl.bps, spec_bars);
+                            audio_ui_set_spectrum(spec_bars);
+                        }
                     }
                     
                     while (1)
                     {   //播放音乐期间逻辑
                     
-                        /* 注：KEY_Tick() 现在由 SysTick 中断定时调用，不再在此处调用 */
+                        /* 注：KEY_Tick() 在此处调用，是按键的唯一扫描源 */
 						KEY_Tick();
 						key = KEY_GetKeyDown();
 						 g_debug_key=key;
-                        if (key & KEY1_PRES)   /* 暂停/继续播放 */
+                        if (key & KEY2_PRES)   /* KEY2 = 暂停/继续播放 */
                         {
+                            audio_ui_set_btn_pressed(2);  /* 按钮按下视觉反馈 */
                             if (g_audiodev.status & 0x01)
                             {
                                 g_audiodev.status &= ~(1 << 0);
+                                audio_ui_set_playing(0);  /* 通知UI：暂停 */
                             }
                             else 
                             {
                                 g_audiodev.status |= 0x01;
+                                audio_ui_set_playing(1);  /* 通知UI：播放 */
                             }
                         }
                         
-                        if (key & KEY_WAKE_PRES)   /* 从头播放 */
+                        if (key & KEY0_PRES)   /* KEY0 = 上一曲 */
                         {
-                            res = KEY_WAKE_PRES;
-                            break;
-                        }
-                        
-                        if (key & KEY2_PRES)   /* 上一曲 */
-                        {
-                            res = KEY2_PRES;
-                            break;
-                        }
-                        
-                        if (key & KEY0_PRES)   /* 下一曲 */
-                        {
+                            audio_ui_set_btn_pressed(0);  /* 按钮按下视觉反馈 */
                             res = KEY0_PRES;
                             break;
+                        }
+                        
+                        if (key & KEY1_PRES)   /* KEY1 = 下一曲 */
+                        {
+                            audio_ui_set_btn_pressed(1);  /* 按钮按下视觉反馈 */
+                            res = KEY1_PRES;
+                            break;
+                        }
+                        
+                        if (key & KEY_WAKE_PRES)
+                        {
+                            audio_ui_request_page_toggle();
                         }
                         
                         wav_get_curtime(g_audiodev.file, &wavctrl); /* 得到总时间和当前播放的时间 */
@@ -372,7 +407,7 @@ uint8_t wav_play_song(char* fname)
                         /* 优化：删除了阻塞式 delay_ms(10)，按键响应时间由 SysTick 中断的 KEY_Tick 保证 */
                         if ((g_audiodev.status & 0x01) == 0)
                         {
-                            /* 暂停状态，继续循环以响应按键，不再阻塞 */
+                            vTaskDelay(10);  /* 暂停状态, 10ms周期响应按键, 让出CPU */
                         }
                         else
                         {

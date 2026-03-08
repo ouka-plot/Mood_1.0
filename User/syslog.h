@@ -25,10 +25,8 @@ debug	调试程序产生的信息。
 #define LOG_DEBUG   7   /* debug-level messages */
 
 
-#pragma __printf_args
 extern int ts_printf(const char * __restrict /*format*/, ...) __attribute__((__nonnull__(1)));
 
-#pragma __printf_args
 extern int log_record(const char * __restrict /*format*/, ...) __attribute__((__nonnull__(1)));
 
 #ifdef __DEBUG_MODE

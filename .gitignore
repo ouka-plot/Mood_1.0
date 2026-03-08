@@ -55,6 +55,9 @@ cmake_install.cmake
 CMakeCache.txt
 Makefile
 
+# nRF Connect SDK / Zephyr build output
+nrf52832_ble_bridge/build/
+
 # Python cache
 __pycache__/
 *.py[cod]
@@ -71,6 +74,7 @@ ehthumbs.db
 # Dependencies and packages
 node_modules/
 .npm/
+gcc-arm-none-eabi-10.3-2021.10-x86_64-linux.tar.bz2
 
 # Misc
 *.orig

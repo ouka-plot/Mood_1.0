@@ -23,6 +23,8 @@
 #include "./FATFS/source/ffconf.h"
 //#include "./FATFS/exfuns/fattester.h"
 #include "string.h"
+#include "./APP/audio_ui_bridge.h"
+#include "./APP/audio_monitor.h"
 
 /* 定义最大支持的音乐文件数量，用于静态数组分配 */
 #define MAX_MUSIC_FILES     200 
@@ -102,10 +104,9 @@ uint16_t audio_get_tnum(char *path)
  */
 void audio_index_show(uint16_t index, uint16_t total)
 {
-    /* 显示当前曲目的索引,及总曲目数 */
-    lcd_show_num(30 + 0, 230, index, 3, 16, RED);   /* 索引 */
-    lcd_show_char(30 + 24, 230, '/', 16, 0, RED);
-    lcd_show_num(30 + 32, 230, total, 3, 16, RED);  /* 总曲目 */
+    /* 索引信息已通过 audio_ui_set_index 更新到LVGL，不再直接绘制LCD */
+    (void)index;
+    (void)total;
 }
 
 /**
@@ -123,20 +124,8 @@ void audio_msg_show(uint32_t totsec, uint32_t cursec, uint32_t bitrate)
     {
         playtime = cursec;
         
-        /* 显示播放时间 */
-        lcd_show_num(30, 210, playtime / 60, 2, 16, RED);       /* 分钟 */
-        lcd_show_char(30 + 16, 210, ':', 16, 0, RED);
-        lcd_show_num(30 + 24, 210, playtime % 60, 2, 16, RED);  /* 秒钟 */
-        lcd_show_char(30 + 40, 210, '/', 16, 0, RED);
-        
-        /* 显示总时间 */
-        lcd_show_num(30 + 48, 210, totsec / 60, 2, 16, RED);    /* 分钟 */
-        lcd_show_char(30 + 64, 210, ':', 16, 0, RED);
-        lcd_show_num(30 + 72, 210, totsec % 60, 2, 16, RED);    /* 秒钟 */
-        
-        /* 显示位率 */
-        lcd_show_num(30 + 110, 210, bitrate / 1000, 4, 16, RED);/* 显示位率 */
-        lcd_show_string(30 + 110 + 32 , 210, 200, 16, 16, "Kbps", RED);
+        /* 更新UI桥接状态（LVGL任务会读取并更新控件） */
+        audio_ui_set_time(cursec, totsec, bitrate);
     }
 }
 
@@ -146,7 +135,7 @@ void audio_msg_show(uint32_t totsec, uint32_t cursec, uint32_t bitrate)
  * @retval      无
  */
 void audio_play(void)
-{
+{   //定义局部变量
     uint8_t res;
     DIR wavdir;             /* 目录 */
     FILINFO wavfileinfo;    /* 文件信息 (改为局部变量) */
@@ -156,25 +145,26 @@ void audio_play(void)
     uint8_t key;            /* 键值 */
     uint32_t temp;
     uint32_t *wavoffsettbl; /* 指向静态数组 */
-
+    //es8388 配置
     es8388_adda_cfg(1, 0);  /* 开启DAC关闭ADC */
-    es8388_output_cfg(1, 1);/* DAC选择通道1输出 */
-
+    es8388_output_cfg(1, 0);  /* DAC输出: OUT1(耳机)开, OUT2(喇叭)关 */
+    
+    /* 启动后台音频监听 (同时播放音乐和监听环境声音) */
+    /* 取消注释下面一行来启用婴儿哭声检测 */
+    audio_monitor_start(AUDIO_MONITOR_MODE_BACKGROUND);
+    
+    //从sd卡读取
     while (f_opendir(&wavdir, "0:/MUSIC"))  /* 打开音乐文件夹 */
     {
-        text_show_string(30, 190, 240, 16, "MUSIC文件夹错误!", 16, 0, BLUE);
-        delay_ms(200);
-        lcd_fill(30, 190, 240, 206, WHITE); /* 清除显示 */
-        delay_ms(200);
+        printf("MUSIC folder error!\r\n");
+        delay_ms(500);
     }
 
     totwavnum = audio_get_tnum("0:/MUSIC"); /* 得到总有效文件数 */
     while (totwavnum == 0)                  /* 音乐文件总数为0 (注意这里改成了 == 0) */
     {
-        text_show_string(30, 190, 240, 16, "没有音乐文件!", 16, 0, BLUE);
-        delay_ms(200);
-        lcd_fill(30, 190, 240, 146, WHITE); /* 清除显示 */
-        delay_ms(200);
+        printf("No music files!\r\n");
+        delay_ms(500);
     }
     
     /* 
@@ -236,13 +226,21 @@ void audio_play(void)
         
         strcpy((char*)pname, "0:/MUSIC/");                      /* 复制路径(目录) */
         strcat((char*)pname, (const char*)wavfileinfo.fname);   /* 将文件名接在后面 */
-        lcd_fill(30, 190, lcddev.width - 1, 190 + 16, WHITE);   /* 清除之前的显示 */
-        text_show_string(30, 190, lcddev.width - 60, 16, (char*)wavfileinfo.fname, 16, 0, BLUE);   /* 显示歌曲名字 */
-        audio_index_show(curindex + 1, totwavnum);
+        
 
-		 KEY_Tick();
+
+        //lvgl
+        /* 更新UI桥接状态：歌曲名和索引 */
+        audio_ui_set_song_name((const char*)wavfileinfo.fname);
+        audio_ui_set_index(curindex + 1, totwavnum);
+        audio_index_show(curindex + 1, totwavnum);
+        
+
+
+        //key扫描和播放控制
+		KEY_Tick();
         key = audio_play_song(pname);                           /* 播放这个音频文件 */
-        if (key & KEY2_PRES)       /* 上一曲 */
+        if (key & KEY0_PRES)       /* KEY0 = 上一曲 */
         {
             if (curindex)
             {
@@ -253,7 +251,7 @@ void audio_play(void)
                 curindex = totwavnum - 1;
             }
         }
-        else if (key & KEY0_PRES)  /* 下一曲 */
+        else if (key & KEY1_PRES)  /* KEY1 = 下一曲 */
         {
             curindex++;
             if (curindex >= totwavnum)
@@ -261,10 +259,7 @@ void audio_play(void)
                 curindex = 0;       /* 到末尾的时候,自动从头开始 */
             }
         }
-        else if (key & KEY_WAKE_PRES)  /* WAKE 从头播放，重新开始当前曲目 */
-        {
-            /* 保持 curindex 不变，重新播放当前曲目 */
-        }
+        /* KEY_WAKE 用于切换界面，由LVGL任务处理 */
         else
         {
             break;  /* 产生了错误 */

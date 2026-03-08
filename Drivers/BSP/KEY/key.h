@@ -59,14 +59,7 @@
 #define KEY_WAKE_PRES    (1 << 3)    // 值为 8
 
 
-// === 模块内部静态变量，实现封装 ===
-static uint8_t s_key_state;         // 按键的当前持续状态
-static uint8_t s_key_down;          // 按键的“按下”事件
-static uint8_t s_key_up;            // 按键的“松开”事件
-
-// 用于软件消抖的变量
-static uint8_t s_debounce_state;    // 消抖过程中的中间状态
-static uint8_t s_debounce_counter;  // 消抖计数器
+/* 注意：s_key_state 等变量已移到 key.c 中定义，避免多翻译单元重复实例 */
 #define DEBOUNCE_TIME_MS    10     // 定义10ms的消抖时间（优化：机械按键抖动通常5-10ms）
 
 void key_init(void);

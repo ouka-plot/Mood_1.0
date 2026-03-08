@@ -43,7 +43,7 @@
 #define __DELAY_H
 #include "SYSTEM/sys/sys.h"
 
-#define SYS_SUPPORT_OS  1   /* 定义为 1 以支持 FreeRTOS */
+/* SYS_SUPPORT_OS 已在 sys.h 中定义 */
 
 void delay_init(uint16_t sysclk);
 void delay_ms(uint16_t nms);
