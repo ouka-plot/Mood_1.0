@@ -19,18 +19,16 @@ This is an STM32F407-based audio player project that plays WAV files from an SD 
 
 ## Build System
 
-**IDE**: Keil MDK-ARM (µVision)
-
-**Project File**: `Projects/MDK-ARM/atk_f407.uvprojx`
+**Primary Toolchain**: GCC + Docker
 
 **Build Commands**:
 
-- Open the project in Keil µVision IDE
-- Build: Use Keil's build button or menu (Project → Build Target)
-- Flash: Use Keil's download button or debugger
+- Build: run `make` in the project root, use `tools/build/build.sh`, or use the VS Code `Build (Docker)` task
+- Clean build: run `make clean`, `tools/build/build.sh clean`, or use the VS Code `Clean Build (Docker)` task
+- Flash: use `tools/flash/flash.bat`, `tools/flash/jlink_flash.jlink`, or the VS Code `Flash (J-Link)` task
 - Output files are generated in `Output/` directory
 
-**Note**: This project uses Keil-specific toolchain and does not have a Makefile. Building requires Keil MDK-ARM IDE.
+**Note**: Legacy IDE project files are no longer kept in the repository. The maintained build flow is GCC/Docker-based.
 
 ## Architecture
 
@@ -59,7 +57,6 @@ This is an STM32F407-based audio player project that plays WAV files from an SD 
 │   ├── FATFS/              # FAT filesystem for SD card
 │   ├── AUDIOCODEC/wav/     # WAV file decoder
 │   ├── LVGL/               # LittlevGL graphics library
-│   ├── TEXT/               # Text rendering utilities
 │   └── USMART/             # Debug command interface
 ├── User/
 │   ├── main.c              # Application entry point
@@ -74,7 +71,9 @@ This is an STM32F407-based audio player project that plays WAV files from an SD 
 │   ├── gui_guider.c/h      # GUI setup and structure
 │   ├── events_init.c       # Event handlers
 │   └── guider_fonts/       # Custom fonts (CJK support)
-├── Projects/MDK-ARM/       # Keil project files
+├── tools/                  # Build and flash helper scripts
+│   ├── build/build.sh      # Docker build helper
+│   └── flash/              # J-Link flashing helpers
 └── Output/                 # Build output directory
 ```
 
@@ -151,6 +150,7 @@ The application uses FreeRTOS V9.0.0 with multiple tasks:
 ### Memory Management
 
 **Important**: This project was modified to remove dynamic memory allocation (malloc/free) to avoid heap fragmentation issues. Audio playback uses static buffers:
+
 - `s_wav_offset_tbl[200]`: Static array for file offsets
 - `s_pname_buf[FF_MAX_LFN * 2 + 1]`: Static buffer for file paths
 - `MAX_MUSIC_FILES`: Hard limit of 200 audio files
@@ -210,6 +210,7 @@ The audio monitoring module (`User/APP/audio_monitor.c/h`) provides real-time so
 ### FreeRTOS Configuration
 
 Edit `User/FreeRTOSConfig.h` for:
+
 - Heap size, tick rate, task priorities
 - Enable/disable features (mutexes, semaphores, timers, etc.)
 - Stack overflow detection, malloc failed hooks
@@ -229,7 +230,7 @@ Edit `User/FreeRTOSConfig.h` for:
 
 - USART1 configured at 115200 baud for printf debugging
 - USMART debug interface available for runtime command execution
-- Keil debugger with J-Link or ST-Link
+- J-Link or ST-Link can be used for on-target flashing/debugging
 - FreeRTOS hooks for malloc failures and stack overflows in main.c
 
 ## LVGL Configuration
@@ -299,9 +300,7 @@ The project includes LVGL v8.3.9 for GUI with a custom music player interface (s
 
 ## Important Notes
 
-- **Build System**: Now supports both Keil MDK-ARM and GCC Makefile
-  - Keil: Open `Projects/MDK-ARM/atk_f407.uvprojx`
-  - GCC: Run `make` in project root (requires arm-none-eabi-gcc)
+- **Build System**: Uses GCC Makefile plus Docker build helpers; run `make` in project root, or use `tools/build/build.sh` and the VS Code build tasks
 - **Static Memory**: Dynamic allocation removed; use static buffers for new features
 - **SD Card Path**: Audio files must be in `0:/MUSIC/` directory
 - **File Limit**: Maximum 200 audio files supported (MAX_MUSIC_FILES)

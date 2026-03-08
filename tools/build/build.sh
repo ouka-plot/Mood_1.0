@@ -8,7 +8,7 @@
 #   - Only copies artifacts BACK to host
 #   - Avoids slow Windows volume mount I/O during compilation
 #
-# Usage: ./build.sh [clean|debug|release|help]
+# Usage: ./tools/build/build.sh [clean|debug|release|help]
 # =============================================================================
 set -e
 

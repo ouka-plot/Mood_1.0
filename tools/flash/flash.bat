@@ -2,6 +2,10 @@
 REM ============================================================
 REM Mood_1.0 STM32F407 Flash Script (J-Link)
 REM ============================================================
+setlocal
+
+set SCRIPT_DIR=%~dp0
+for %%I in ("%SCRIPT_DIR%..\..") do set ROOT_DIR=%%~fI
 
 set JLINK_EXE=D:\software\jlink\JLink_V916a\JLink.exe
 
@@ -20,26 +24,29 @@ if not exist "%JLINK_EXE%" (
 )
 
 REM 检查固件文件
-if not exist "Output\Mood_1.0.bin" (
-    echo [ERROR] Output\Mood_1.0.bin not found!
+if not exist "%ROOT_DIR%\Output\Mood_1.0.bin" (
+    echo [ERROR] %ROOT_DIR%\Output\Mood_1.0.bin not found!
     echo Please build the project first: Ctrl+Shift+B
     pause
     exit /b 1
 )
 
-echo [INFO] Firmware: Output\Mood_1.0.bin
-for %%A in ("Output\Mood_1.0.bin") do echo [INFO] Size: %%~zA bytes
+echo [INFO] Firmware: %ROOT_DIR%\Output\Mood_1.0.bin
+for %%A in ("%ROOT_DIR%\Output\Mood_1.0.bin") do echo [INFO] Size: %%~zA bytes
 echo.
 echo [INFO] Starting J-Link...
 echo.
 
-"%JLINK_EXE%" -device STM32F407ZG -if SWD -speed 4000 -autoconnect 1 -CommandFile jlink_flash.jlink
+pushd "%ROOT_DIR%"
+"%JLINK_EXE%" -device STM32F407ZG -if SWD -speed 4000 -autoconnect 1 -CommandFile "%ROOT_DIR%\tools\flash\jlink_flash.jlink"
+set FLASH_EXIT=%ERRORLEVEL%
+popd
 
-if errorlevel 1 (
+if not "%FLASH_EXIT%"=="0" (
     echo.
     echo [ERROR] Flash failed!
     pause
-    exit /b 1
+    exit /b %FLASH_EXIT%
 )
 
 echo.
@@ -48,3 +55,4 @@ echo   Flash completed successfully!
 echo ========================================
 echo.
 pause
+endlocal

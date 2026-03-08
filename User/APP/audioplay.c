@@ -19,7 +19,6 @@
 #include "./SYSTEM/delay/delay.h"
 #include "./BSP/KEY/key.h"
 //#include "./FATFS/exfuns/exfuns.h"
-#include "./TEXT/text.h"
 #include "./FATFS/source/ffconf.h"
 //#include "./FATFS/exfuns/fattester.h"
 #include "string.h"
@@ -330,9 +329,6 @@ uint8_t audio_play_song(char* fname)
 //#include "./FATFS/source/ff.h"
 ////#include "./MALLOC/malloc.h"
 //#include "./SYSTEM/USART/usart.h"
-//#include "./BSP/ES8388/es8388.h"
-//#include "./BSP/I2S/i2s.h"
-//#include "./BSP/LED/led.h"
 //#include "./BSP/LCD/lcd.h"
 //#include "./SYSTEM/delay/delay.h"
 //#include "./BSP/KEY/key.h"
@@ -473,7 +469,6 @@ uint8_t audio_play_song(char* fname)
 
 //    while (f_opendir(&wavdir, "0:/MUSIC"))  /* 打开音乐文件夹 */
 //    {
-//        text_show_string(30, 190, 240, 16, "MUSIC文件夹错误!", 16, 0, BLUE);
 //        delay_ms(200);
 //        lcd_fill(30, 190, 240, 206, WHITE); /* 清除显示 */
 //        delay_ms(200);
@@ -482,7 +477,6 @@ uint8_t audio_play_song(char* fname)
 //    totwavnum = audio_get_tnum("0:/MUSIC"); /* 得到总有效文件数 */
 //    while (totwavnum == NULL)               /* 音乐文件总数为0 */
 //    {
-//        text_show_string(30, 190, 240, 16, "没有音乐文件!", 16, 0, BLUE);
 //        delay_ms(200);
 //        lcd_fill(30, 190, 240, 146, WHITE); /* 清除显示 */
 //        delay_ms(200);
@@ -493,7 +487,6 @@ uint8_t audio_play_song(char* fname)
 //    wavoffsettbl = mymalloc(SRAMIN, 4 * totwavnum);             /* 申请4*totwavnum个字节的内存,用于存放音乐文件off block索引 */
 //    while (!wavfileinfo || !pname || !wavoffsettbl)             /* 内存分配出错 */
 //    {
-//        text_show_string(30, 190, 240, 16, "内存分配失败!", 16, 0, BLUE);
 //        delay_ms(200);
 //        lcd_fill(30, 190, 240, 146, WHITE);                     /* 清除显示 */
 //        delay_ms(200);
@@ -537,7 +530,6 @@ uint8_t audio_play_song(char* fname)
 //        strcpy((char*)pname, "0:/MUSIC/");                      /* 复制路径(目录) */
 //        strcat((char*)pname, (const char*)wavfileinfo->fname);  /* 将文件名接在后面 */
 //        lcd_fill(30, 190, lcddev.width - 1, 190 + 16, WHITE);   /* 清除之前的显示 */
-//        text_show_string(30, 190, lcddev.width - 60, 16, (char*)wavfileinfo->fname, 16, 0, BLUE);   /* 显示歌曲名字 */
 //        audio_index_show(curindex + 1, totwavnum);
 
 //        key = audio_play_song(pname);                           /* 播放这个音频文件 */

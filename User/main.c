@@ -19,7 +19,6 @@
 #include "BSP/LCD/lcd.h"
 #include "./USMART/usmart.h"
 #include "./BSP/SDIO/sdio_sdcard.h"
-  #include "./TEXT/text.h"
 #include "./BSP/ES8388/es8388.h"
 #include "./APP/audioplay.h"
 #include "./APP/audio_monitor.h"
@@ -219,13 +218,6 @@ int main(void)
 	audio_ui_set_volume(33);     /* 同步默认耳机音量到UI(10/30约等于33%) */
 	audio_eq_init();
 	eq_ctrl_uart_init(115200);
-    
-    // text_show_string(30, 30, 200, 16, "正点原子STM32开发板", 16, 0, RED);
-    // text_show_string(30, 50, 200, 16, "音乐播放器实验", 16, 0, RED);
-    // text_show_string(30, 70, 200, 16, "正点原子@ALIENTEK", 16, 0, RED);
-    // text_show_string(30, 90, 200, 16, "2021年11月16日", 16, 0, RED);
-    // text_show_string(30, 110, 200, 16, "KEY0:NEXT   KEY2:PREV", 16, 0, RED);
-    // text_show_string(30, 130, 200, 16, "KEY_UP:PAUSE/PLAY", 16, 0, RED);
     
 	
 		xTaskCreate(vAudio_Task, \
