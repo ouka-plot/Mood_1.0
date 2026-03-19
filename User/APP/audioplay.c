@@ -23,7 +23,8 @@
 //#include "./FATFS/exfuns/fattester.h"
 #include "string.h"
 #include "./APP/audio_ui_bridge.h"
-#include "./APP/audio_monitor.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 /* 定义最大支持的音乐文件数量，用于静态数组分配 */
 #define MAX_MUSIC_FILES     200 
@@ -148,22 +149,18 @@ void audio_play(void)
     es8388_adda_cfg(1, 0);  /* 开启DAC关闭ADC */
     es8388_output_cfg(1, 0);  /* DAC输出: OUT1(耳机)开, OUT2(喇叭)关 */
     
-    /* 启动后台音频监听 (同时播放音乐和监听环境声音) */
-    /* 取消注释下面一行来启用婴儿哭声检测 */
-    audio_monitor_start(AUDIO_MONITOR_MODE_BACKGROUND);
-    
-    //从sd卡读取
+    //从sd卡读取 (使用vTaskDelay避免忙等待饿死其他任务)
     while (f_opendir(&wavdir, "0:/MUSIC"))  /* 打开音乐文件夹 */
     {
         printf("MUSIC folder error!\r\n");
-        delay_ms(500);
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 
     totwavnum = audio_get_tnum("0:/MUSIC"); /* 得到总有效文件数 */
-    while (totwavnum == 0)                  /* 音乐文件总数为0 (注意这里改成了 == 0) */
+    while (totwavnum == 0)                  /* 音乐文件总数为0 */
     {
         printf("No music files!\r\n");
-        delay_ms(500);
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
     
     /* 
@@ -257,6 +254,10 @@ void audio_play(void)
             {
                 curindex = 0;       /* 到末尾的时候,自动从头开始 */
             }
+        }
+        else if (key & KEY_WAKE_PRES)  /* 从录音模式返回, 重播当前曲 */
+        {
+            /* curindex不变, 重新播放当前曲目 */
         }
         /* KEY_WAKE 用于切换界面，由LVGL任务处理 */
         else

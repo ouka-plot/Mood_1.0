@@ -57,7 +57,7 @@ int audio_spectrum_init(void)
     s_inited = 1;
     return 0;
 }
-
+//sd得到的 未传到es8388 的buf, 字节数，位数（16/24）,返回频谱柱状图数据缓冲区
 void audio_spectrum_calc(const uint8_t *pcm_buf, uint32_t buf_size,
                          uint8_t bps, uint8_t *bars)
 {
@@ -94,7 +94,7 @@ void audio_spectrum_calc(const uint8_t *pcm_buf, uint32_t buf_size,
 
     /* 不足FFT_LEN的部分补零 */
     if (samples_needed < FFT_LEN) {
-        arm_fill_f32(0.0f, &s_fft_in[samples_needed], FFT_LEN - samples_needed);
+        arm_fill_f32(0.0f, &s_  fft_in[samples_needed], FFT_LEN - samples_needed);
     }
 
     /* ===== 2) 实数FFT ===== */
@@ -112,7 +112,7 @@ void audio_spectrum_calc(const uint8_t *pcm_buf, uint32_t buf_size,
 
     /* ===== 4) 合并到15个频段, 四次方根映射 ===== */
     for (uint32_t b = 0; b < SPECTRUM_NUM_BARS; b++) {
-        uint16_t start = s_band_edges[b];
+        uint16_t start = s_band_edges[b];//低频映射 bins少，高频映射 bins多，符合人耳对数频率感知特性
         uint16_t end   = s_band_edges[b + 1];
         float32_t sum_p = 0.0f;
 

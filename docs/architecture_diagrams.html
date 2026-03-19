@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Mood 1.0 架构图</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background: #f5f5f5;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 { text-align: center; color: #333; }
+        h2 { color: #1565c0; border-bottom: 2px solid #1565c0; padding-bottom: 8px; margin-top: 60px; }
+        .diagram-container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 20px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            overflow-x: auto;
+        }
+        .tip {
+            background: #e3f2fd;
+            border-left: 4px solid #1565c0;
+            padding: 12px 16px;
+            margin: 16px 0;
+            border-radius: 4px;
+            font-size: 14px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎵 Mood 1.0 系统架构图集</h1>
+    <p class="tip">💡 右键点击图片 → "图片另存为" 保存单张；或使用浏览器 Ctrl+P 打印为 PDF 保存全部。</p>
+
+    <!-- ============ 图1: 系统总架构 ============ -->
+    <h2>图1：系统总架构图</h2>
+    <div class="diagram-container">
+        <pre class="mermaid">
+graph TB
+    subgraph HW["硬件层 Hardware"]
+        SD["SD卡&lt;br/&gt;FAT32 / 0:/MUSIC/"]
+        ES8388["ES8388 Codec&lt;br/&gt;DAC+ADC"]
+        I2S["I2S2 Full-Duplex&lt;br/&gt;TX: DMA1_S4 / RX: DMA1_S3"]
+        LCD["TFT LCD&lt;br/&gt;RGB565"]
+        KEY["4个按键&lt;br/&gt;KEY0/1/2/WAKE"]
+        LED["LED0 / LED1"]
+        UART1["USART1 115200&lt;br/&gt;调试串口"]
+        UART2["USART2 115200&lt;br/&gt;EQ控制串口"]
+        NRF["nRF52832&lt;br/&gt;BLE Bridge"]
+        PHONE["手机 App&lt;br/&gt;BLE NUS"]
+    end
+
+    subgraph MCU["STM32F407ZGTx - 168MHz, 1MB Flash, 192KB RAM"]
+        subgraph RTOS["FreeRTOS V9.0 &lpar;heap_5 @ CCM 64KB&rpar;"]
+            T_AUDIO["vAudio_Task&lt;br/&gt;Prio 3 / Stack 4KB&lt;br/&gt;音频播放主循环"]
+            T_LVGL["vLvgl_Task&lt;br/&gt;Prio 2 / Stack 2KB&lt;br/&gt;GUI刷新 5ms"]
+            T_MON["vAudioMonitor_Task&lt;br/&gt;Prio 2 / Stack 1KB&lt;br/&gt;声音能量+ZCR检测"]
+            T_ML["vTinyML_Task&lt;br/&gt;Prio 1 / Stack 2KB&lt;br/&gt;CNN推理 1Hz"]
+            T_EQ["vEqCtrl_Task&lt;br/&gt;Prio 1 / Stack 1KB&lt;br/&gt;UART命令解析"]
+            T_LED["vLed_Task&lt;br/&gt;Prio 2 / Stack 0.5KB&lt;br/&gt;心跳LED"]
+        end
+
+        subgraph MW["中间件 Middleware"]
+            FATFS["FatFs&lt;br/&gt;SD卡文件系统"]
+            WAV["WAV Decoder&lt;br/&gt;16/24bit PCM"]
+            LVGL_LIB["LVGL v8.3.9&lt;br/&gt;24KB Heap"]
+            EQ["5-Band Biquad EQ&lt;br/&gt;参数化均衡器"]
+            SPECTRUM["512-pt RFFT&lt;br/&gt;频谱分析 → 15柱"]
+            MFCC["MFCC特征提取&lt;br/&gt;13系数 x 31帧"]
+            DENOISE["降噪&lt;br/&gt;谱减法"]
+            CNN["CNN分类器&lt;br/&gt;5类: silence/noise/cry/shout/speech"]
+            RINGBUF["Lock-Free RingBuf&lt;br/&gt;8000样本 = 0.5s"]
+            RECORDER["WAV Recorder&lt;br/&gt;16bit/16kHz"]
+        end
+
+        BRIDGE["audio_ui_bridge&lt;br/&gt;volatile共享状态"]
+    end
+
+    SD -->|SDIO 4-bit| FATFS
+    FATFS -->|f_read| WAV
+    WAV -->|PCM| EQ
+    EQ -->|处理后PCM| I2S
+    I2S -->|DMA TX 双缓冲| ES8388
+    ES8388 -->|模拟输出| HEADPHONE["🎧 耳机"]
+
+    ES8388 -->|ADC采集| I2S
+    I2S -->|DMA RX 双缓冲| T_MON
+    T_MON -->|单声道提取| RINGBUF
+    RINGBUF -->|TaskNotify 1Hz| T_ML
+    T_ML -->|DENOISE → MFCC → CNN| CNN
+    CNN -->|分类结果| BRIDGE
+
+    WAV -->|PCM buffer| SPECTRUM
+    SPECTRUM -->|15-bar| BRIDGE
+
+    T_AUDIO -->|歌名/时间/状态| BRIDGE
+    BRIDGE -->|读取状态| T_LVGL
+    T_LVGL -->|LVGL渲染| LCD
+
+    KEY -->|GPIO中断| T_AUDIO
+    KEY -->|长按WAKE| RECORDER
+    RECORDER -->|I2S RX → SD| SD
+
+    UART2 <-->|文本命令| T_EQ
+    T_EQ -->|EQ参数| EQ
+    UART2 <-->|P0.06/P0.08| NRF
+    NRF <-->|BLE NUS| PHONE
+
+    T_LED -->|Toggle| LED
+    T_AUDIO -->|printf| UART1
+
+    style HW fill:#e8f4fd,stroke:#4a90d9
+    style MCU fill:#fff3e0,stroke:#f57c00
+    style RTOS fill:#e8f5e9,stroke:#43a047
+    style MW fill:#fce4ec,stroke:#e53935
+        </pre>
+    </div>
+
+    <!-- ============ 图2: 音频播放数据链路 ============ -->
+    <h2>图2：音频播放 PCM 数据流</h2>
+    <div class="diagram-container">
+        <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant SD as SD卡
+    participant WAV as WAV Decoder
+    participant EQ as Biquad EQ
+    participant DMA_TX as DMA1_S4 TX
+    participant I2S as I2S2
+    participant ES as ES8388 DAC
+    participant SPK as 耳机
+
+    Note over SD,SPK: 音频播放数据链路 - DMA双缓冲 ping-pong
+
+    WAV->>SD: f_read(buf1, 4096)
+    SD-->>WAV: PCM数据填充buf1
+    WAV->>EQ: audio_eq_process_buffer(buf1)
+    EQ-->>WAV: EQ处理完成
+    WAV->>SD: f_read(buf2, 4096)
+    SD-->>WAV: PCM数据填充buf2
+    WAV->>EQ: audio_eq_process_buffer(buf2)
+
+    WAV->>DMA_TX: i2s_tx_dma_init(buf1, buf2, 2048)
+    WAV->>I2S: i2s_play_start()
+
+    loop 每次DMA传输完成
+        DMA_TX->>DMA_TX: ISR: wav_i2s_dma_tx_callback()
+        DMA_TX->>WAV: wavtransferend = 1, wavwitchbuf
+        Note over DMA_TX: 自动切换M0AR/M1AR
+        WAV->>SD: f_read(空闲buf, 4096)
+        SD-->>WAV: 新PCM数据
+        WAV->>EQ: audio_eq_process_buffer()
+        DMA_TX->>I2S: 发送当前buf
+        I2S->>ES: I2S Philips标准
+        ES->>SPK: 模拟音频输出
+    end
+        </pre>
+    </div>
+
+    <!-- ============ 图3: 声音监测 + AI推理 ============ -->
+    <h2>图3：声音监测 + TinyML 推理链路</h2>
+    <div class="diagram-container">
+        <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant MIC as ES8388 ADC
+    participant I2S_RX as I2S2ext RX
+    participant DMA_RX as DMA1_S3 RX
+    participant MON as vAudioMonitor
+    participant RING as RingBuf 8000样本
+    participant ML as vTinyML_Task
+    participant UI as vLvgl_Task
+    participant LCD as LCD Display
+
+    Note over MIC,LCD: 声音检测 + TinyML 推理链路
+
+    MIC->>I2S_RX: 16kHz/16bit 立体声
+    I2S_RX->>DMA_RX: 双缓冲 rx_buf0/rx_buf1
+
+    loop 每512样本 - 32ms
+        DMA_RX->>MON: ISR → vTaskNotifyGiveFromISR()
+        MON->>MON: extract_mono() 提取单声道
+        MON->>MON: calculate_energy() 能量
+        MON->>MON: calculate_zcr() 过零率
+        MON->>RING: audio_ringbuf_write(mono, 512)
+
+        alt 累积 >= 16000样本 即1秒
+            MON->>ML: vTaskNotifyGiveFromISR()
+        end
+    end
+
+    ML->>RING: audio_ringbuf_read(8000样本)
+    ML->>ML: audio_denoise() 谱减法降噪
+    ML->>ML: audio_features_extract() 13-MFCC x 31帧
+    ML->>ML: audio_classify_run() CNN推理
+    ML->>UI: audio_ui_set_classify_result(label, conf)
+    UI->>LCD: 显示 baby_cry 95%
+        </pre>
+    </div>
+
+    <!-- ============ 图4: BLE远程EQ控制 ============ -->
+    <h2>图4：BLE + UART EQ 远程控制链路</h2>
+    <div class="diagram-container">
+        <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant PHONE as 手机App
+    participant BLE as nRF52832 BLE
+    participant UART as UART2 串口
+    participant EQ_CTRL as vEqCtrl_Task
+    participant EQ as audio_eq
+    participant WAV as WAV播放
+    participant BRIDGE as audio_ui_bridge
+    participant UI as LVGL UI
+
+    Note over PHONE,UI: BLE远程EQ控制链路
+
+    PHONE->>BLE: BLE NUS写入 EQ PRESET 2
+    BLE->>BLE: nus_received()
+    BLE->>UART: uart_poll_out() 逐字节转发
+
+    UART->>EQ_CTRL: eq_ctrl_uart_poll() 行缓冲解析
+    EQ_CTRL->>EQ: audio_eq_load_preset(PRESET_ROCK)
+    EQ->>EQ: 重新计算5段biquad系数
+    EQ_CTRL->>BRIDGE: audio_ui_notify_eq_changed()
+
+    Note over WAV,EQ: 下次DMA回调时EQ立即生效
+    WAV->>EQ: audio_eq_process_buffer(pcm)
+    EQ-->>WAV: 均衡处理后PCM
+
+    BRIDGE->>UI: 更新EQ页面显示
+
+    EQ_CTRL->>UART: 回复 OK
+    UART->>BLE: UART ISR → ring_buf
+    BLE->>BLE: main loop drain → ble_send_chunk()
+    BLE->>PHONE: BLE NUS通知 OK
+        </pre>
+    </div>
+
+    <!-- ============ 图5: 内存布局 ============ -->
+    <h2>图5：内存布局图</h2>
+    <div class="diagram-container">
+        <pre class="mermaid">
+graph TB
+    subgraph FLASH["FLASH 1MB &lpar;0x08000000&rpar;"]
+        VEC[".isr_vector&lt;br/&gt;中断向量表"]
+        TEXT[".text&lt;br/&gt;代码段"]
+        RODATA[".rodata&lt;br/&gt;常量/字体/模型权重"]
+        DATA_INIT["已初始化数据副本&lt;br/&gt;_sidata"]
+    end
+
+    subgraph SRAM["SRAM 128KB &lpar;0x20000000&rpar;"]
+        DATA[".data&lt;br/&gt;已初始化全局变量"]
+        BSS[".bss&lt;br/&gt;未初始化全局变量"]
+
+        subgraph STATIC["静态缓冲区 - 必须在SRAM 可DMA"]
+            WAV_BUF["WAV DMA buf x3&lt;br/&gt;12KB"]
+            RX_BUF["Monitor RX buf x2&lt;br/&gt;4KB"]
+            REC_BUF["Recorder buf x2&lt;br/&gt;8KB"]
+        end
+
+        LVGL_MEM["LVGL lv_mem 堆&lt;br/&gt;24KB (.bss)"]
+        HEAP_USER[".heap 用户堆&lt;br/&gt;≥512B"]
+        STACK_MSP[".stack MSP主栈&lt;br/&gt;≥1KB (_estack=0x20020000)"]
+    end
+
+    subgraph CCM["CCM RAM 64KB &lpar;0x10000000&rpar; 不可DMA"]
+        RTOS_HEAP["FreeRTOS heap_5&lt;br/&gt;ucHeap[64KB]&lt;br/&gt;.ccmram_bss NOLOAD"]
+
+        subgraph ALLOC["pvPortMalloc分配"]
+            TASK_STACKS["6个任务栈&lt;br/&gt;~11KB"]
+            RING["RingBuf 16KB"]
+            SPECTRUM_BUF["Spectrum FFT 12KB"]
+            FEAT_BUF["MFCC特征 8KB"]
+            MISC["其他 ~3KB"]
+        end
+    end
+
+    DATA_INIT -.->|启动时复制| DATA
+    RTOS_HEAP -->|pvPortMalloc| ALLOC
+
+    style FLASH fill:#e3f2fd,stroke:#1565c0
+    style SRAM fill:#fff8e1,stroke:#f9a825
+    style CCM fill:#e8f5e9,stroke:#2e7d32
+    style STATIC fill:#ffecb3,stroke:#ff8f00
+    style ALLOC fill:#c8e6c9,stroke:#388e3c
+        </pre>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            securityLevel: 'loose',
+            flowchart: { useMaxWidth: true, htmlLabels: true },
+            sequence: { useMaxWidth: true, showSequenceNumbers: true }
+        });
+    </script>
+</body>
+</html>

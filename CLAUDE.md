@@ -65,8 +65,7 @@ This is an STM32F407-based audio player project that plays WAV files from an SD 
 │   ├── stm32f4xx_it.c      # Interrupt handlers
 │   └── APP/
 │       ├── audioplay.c     # Audio playback logic
-│       ├── audio_ui_bridge.c/h  # Bridge between audio task and UI task
-│       └── audio_monitor.c/h    # Audio monitoring for sound detection
+│       └── audio_ui_bridge.c/h  # Bridge between audio task and UI task
 ├── UI/generated/           # LVGL GUI generated files
 │   ├── gui_guider.c/h      # GUI setup and structure
 │   ├── events_init.c       # Event handlers
@@ -95,20 +94,13 @@ The application uses FreeRTOS V9.0.0 with multiple tasks:
    - Handles button events and visual feedback
    - Updates every 10ms for smooth UI rendering
 
-3. **vAudioMonitor_Task** (Priority 2, Stack: configurable)
-   - Monitors audio input via I2S RX for high-frequency sounds
-   - Uses energy detection and zero-crossing rate (ZCR) analysis
-   - Detects baby crying or similar high-frequency sounds (300-600Hz base, 2-4kHz harmonics)
-   - Operates in background mode (with playback) or standalone mode
-
-4. **vLed_Task** (Priority 2, Stack: configMINIMAL_STACK_SIZE)
+3. **vLed_Task** (Priority 2, Stack: configMINIMAL_STACK_SIZE)
    - Toggles LED1 every 1000ms as a heartbeat indicator
    - Simple status indicator task
 
 **Task Communication**:
 
 - Audio task and UI task communicate via `audio_ui_bridge.c` shared state structure
-- Audio monitor uses FreeRTOS task notifications for DMA callbacks
 - No dynamic memory allocation; all buffers are statically allocated
 
 **Memory Configuration**:
@@ -175,37 +167,6 @@ Key files:
 - `Middlewares/AUDIOCODEC/wav/wavplay.c`: WAV decoder and I2S streaming
 - `Drivers/BSP/I2S/i2s.c`: I2S peripheral and DMA configuration
 - `Drivers/BSP/ES8388/es8388.c`: Audio codec control via I2C
-
-### Audio Monitoring System
-
-The audio monitoring module (`User/APP/audio_monitor.c/h`) provides real-time sound detection:
-
-**Detection Algorithm**:
-
-- Energy detection: Calculates RMS energy of audio frames
-- Zero-crossing rate (ZCR): High-frequency signals have higher ZCR
-- Continuous detection: Requires multiple consecutive frames to avoid false positives
-
-**Operating Modes**:
-
-- `AUDIO_MONITOR_MODE_OFF`: Monitoring disabled
-- `AUDIO_MONITOR_MODE_BACKGROUND`: Monitor while playing music (full-duplex I2S)
-- `AUDIO_MONITOR_MODE_ONLY`: Monitor only, no playback
-
-**Configuration** (in `audio_monitor.h`):
-
-- Sample rate: 16kHz (sufficient for high-frequency detection)
-- Buffer size: 512 samples per channel
-- Energy threshold: 50000 (adjustable via `audio_monitor_set_threshold()`)
-- ZCR threshold: 100 (adjustable)
-- Detection count: 3 consecutive frames required
-
-**I2S Full-Duplex Mode**:
-
-- When monitoring is active, I2S operates in full-duplex mode
-- TX (playback) and RX (recording) run simultaneously
-- ES8388 codec configured with both DAC and ADC enabled
-- Separate DMA streams for TX and RX with double buffering
 
 ### FreeRTOS Configuration
 

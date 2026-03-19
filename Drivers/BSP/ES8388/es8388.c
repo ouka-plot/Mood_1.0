@@ -52,18 +52,18 @@ uint8_t es8388_init(void)
     es8388_write_reg(0x08, 0x00);   /* MCLK不分频 */
     es8388_write_reg(0x2B, 0x80);   /* DAC控制	DACLRC与ADCLRC相同 */
 
-    es8388_write_reg(0x09, 0x88);   /* ADC L/R PGA增益配置为+24dB */
-    es8388_write_reg(0x0C, 0x4C);   /* ADC 数据选择为left data = left ADC, right data = left ADC  音频数据为16bit */
+    es8388_write_reg(0x09, 0x88);   /* ADC L/R PGA增益配置为+24dB ADC L/R PGA增益配置为+24dB */
+    es8388_write_reg(0x0C, 0x4C);   /* ADC 数据选择为left data = left ADC, right data = left ADC  音频数据为16bit，IIS串行音频数据格式 */
     es8388_write_reg(0x0D, 0x02);   /* ADC配置 MCLK/采样率=256 */
     es8388_write_reg(0x10, 0x00);   /* ADC数字音量控制将信号衰减 L  设置为最小！！！ */
     es8388_write_reg(0x11, 0x00);   /* ADC数字音量控制将信号衰减 R  设置为最小！！！ */
 
-    es8388_write_reg(0x17, 0x18);   /* DAC 音频数据为16bit */
+    es8388_write_reg(0x17, 0x18);   /* DAC 音频数据为16bit，iis串行音频数据格式 */
     es8388_write_reg(0x18, 0x02);   /* DAC 配置 MCLK/采样率=256 */
     es8388_write_reg(0x1A, 0x00);   /* DAC数字音量控制将信号衰减 L  设置为最小！！！ */
     es8388_write_reg(0x1B, 0x00);   /* DAC数字音量控制将信号衰减 R  设置为最小！！！ */
-    es8388_write_reg(0x27, 0xB8);   /* L混频器 */
-    es8388_write_reg(0x2A, 0xB8);   /* R混频器 */
+    es8388_write_reg(0x27, 0xB8);   /* L混频器，3db */
+    es8388_write_reg(0x2A, 0xB8);   /* R混频器，3db */
     delay_ms(100);
     
     return 0;
@@ -174,8 +174,8 @@ void es8388_hpvol_set(uint8_t volume)
         volume = 33;
     }
     
-    es8388_write_reg(0x2E, volume);
-    es8388_write_reg(0x2F, volume);
+    es8388_write_reg(0x2E, volume);/* lout1*/
+    es8388_write_reg(0x2F, volume);/* rout1*/
 }
 
 /**
@@ -190,8 +190,8 @@ void es8388_spkvol_set(uint8_t volume)
         volume = 33;
     }
     
-    es8388_write_reg(0x30, volume);
-    es8388_write_reg(0x31, volume);
+    es8388_write_reg(0x30, volume);/* lout2*/
+    es8388_write_reg(0x31, volume);/* rout2*/
 }
 
 /**
@@ -214,7 +214,7 @@ void es8388_3d_set(uint8_t depth)
 void es8388_adda_cfg(uint8_t dacen, uint8_t adcen)
 {
     uint8_t tempreg = 0;
-    
+    //模拟参考电源关闭，DLL关闭电源，停止dac、adc时钟
     tempreg |= ((!dacen) << 0);
     tempreg |= ((!adcen) << 1);
     tempreg |= ((!dacen) << 2);

@@ -8,6 +8,8 @@
 
 #include "audio_ui_bridge.h"
 #include "audio_eq.h"
+#include "eq_ctrl_uart.h"
+#include "recorder.h"
 #include "lvgl.h"
 #include "gui_guider.h"
 #include <stdlib.h>
@@ -16,6 +18,9 @@
 
 /* 全局共享状态 */
 audio_ui_state_t g_audio_ui = {0};
+
+/* 前向声明 */
+void audio_ui_update_recorder(void);
 
 static void audio_ui_load_page(uint8_t page)
 {
@@ -28,6 +33,9 @@ static void audio_ui_load_page(uint8_t page)
         break;
     case UI_PAGE_EQ:
         target = guider_ui.screen_2;
+        break;
+    case UI_PAGE_RECORDER:
+        target = guider_ui.screen_3;
         break;
     case UI_PAGE_LOADING:
     default:
@@ -57,6 +65,7 @@ static void audio_ui_update_eq_page(void)
     lv_obj_t *band_labels[AUDIO_EQ_BAND_COUNT];
     lv_obj_t *freq_labels[AUDIO_EQ_BAND_COUNT];
     lv_obj_t *gain_labels[AUDIO_EQ_BAND_COUNT];
+    lv_obj_t *q_labels[AUDIO_EQ_BAND_COUNT];
     uint8_t band;
 
     if (guider_ui.screen_2 == NULL)
@@ -100,6 +109,11 @@ static void audio_ui_update_eq_page(void)
     gain_labels[2] = guider_ui.screen_2_label_gain_3;
     gain_labels[3] = guider_ui.screen_2_label_gain_4;
     gain_labels[4] = guider_ui.screen_2_label_gain_5;
+    q_labels[0] = guider_ui.screen_2_label_q_1;
+    q_labels[1] = guider_ui.screen_2_label_q_2;
+    q_labels[2] = guider_ui.screen_2_label_q_3;
+    q_labels[3] = guider_ui.screen_2_label_q_4;
+    q_labels[4] = guider_ui.screen_2_label_q_5;
 
     for (band = 0U; band < AUDIO_EQ_BAND_COUNT; band++)
     {
@@ -114,6 +128,10 @@ static void audio_ui_update_eq_page(void)
                  abs((int)status.gain_db_x10[band] / 10),
                  (int)abs(status.gain_db_x10[band] % 10));
         lv_label_set_text(gain_labels[band], line);
+        snprintf(line, sizeof(line), "%u.%02u",
+                 (unsigned int)(status.q_x100[band] / 100U),
+                 (unsigned int)(status.q_x100[band] % 100U));
+        lv_label_set_text(q_labels[band], line);
     }
 }
 
@@ -132,6 +150,7 @@ void audio_ui_set_song_name(const char *name)
         g_audio_ui.page_change_pending = 1U;
     }
     g_audio_ui.update_flag = 1;
+    eq_ctrl_uart_send_player_status();
 }
 
 void audio_ui_set_time(uint32_t cur, uint32_t total, uint32_t bitrate)
@@ -146,6 +165,7 @@ void audio_ui_set_playing(uint8_t playing)
 {
     g_audio_ui.is_playing = playing;
     g_audio_ui.update_flag = 1;
+    eq_ctrl_uart_send_player_status();
 }
 
 void audio_ui_set_index(uint16_t index, uint16_t total)
@@ -198,6 +218,11 @@ void audio_ui_request_page_toggle(void)
     {
         g_audio_ui.requested_page = UI_PAGE_PLAYER;
     }
+    else if (g_audio_ui.current_page == UI_PAGE_RECORDER)
+    {
+        /* 从录音页面不能通过普通切换退出 */
+        return;
+    }
     else
     {
         g_audio_ui.requested_page = UI_PAGE_EQ;
@@ -205,14 +230,6 @@ void audio_ui_request_page_toggle(void)
 
     g_audio_ui.page_change_pending = 1U;
     g_audio_ui.update_flag = 1U;
-}
-
-void audio_ui_set_classify_result(uint8_t label, float confidence)
-{
-    g_audio_ui.classify_label = label;
-    g_audio_ui.classify_confidence = confidence;
-    g_audio_ui.classify_updated = 1;
-    g_audio_ui.update_flag = 1;
 }
 
 /* ==================== UI任务调用的接口 ==================== */
@@ -224,10 +241,11 @@ void audio_ui_init_screen(void)
 {
     memset(&g_audio_ui, 0, sizeof(g_audio_ui));
 
-    /* 创建启动页、播放器页和EQ页 */
+    /* 创建启动页、播放器页、EQ页和录音页 */
     setup_scr_screen(&guider_ui);
     setup_scr_screen_1(&guider_ui);
     setup_scr_screen_2(&guider_ui);
+    setup_scr_screen_3(&guider_ui);
     
     /* 首屏显示加载页 */
     g_audio_ui.current_page = UI_PAGE_LOADING;
@@ -392,6 +410,7 @@ void audio_ui_update_lvgl(void)
     }
 
     audio_ui_update_eq_page();
+    audio_ui_update_recorder();
     
     if (!g_audio_ui.update_flag)
         return;
@@ -474,4 +493,103 @@ void audio_ui_update_lvgl(void)
     }
     
     g_audio_ui.update_flag = 0;
+}
+
+/* ==================== 录音相关接口 ==================== */
+
+void audio_ui_set_rec_state(uint8_t state)
+{
+    g_audio_ui.rec_state = state;
+    g_audio_ui.rec_updated = 1;
+    g_audio_ui.update_flag = 1;
+}
+
+void audio_ui_set_rec_time(uint32_t duration, uint32_t size)
+{
+    g_audio_ui.rec_duration = duration;
+    g_audio_ui.rec_size = size;
+    g_audio_ui.rec_updated = 1;
+    g_audio_ui.update_flag = 1;
+}
+
+void audio_ui_request_enter_recorder(void)
+{
+    g_audio_ui.rec_enter_request = 1;
+    g_audio_ui.requested_page = UI_PAGE_RECORDER;
+    g_audio_ui.page_change_pending = 1;
+    g_audio_ui.update_flag = 1;
+}
+
+void audio_ui_request_exit_recorder(void)
+{
+    g_audio_ui.rec_exit_request = 1;
+    g_audio_ui.requested_page = UI_PAGE_PLAYER;
+    g_audio_ui.page_change_pending = 1;
+    g_audio_ui.update_flag = 1;
+}
+
+/**
+ * @brief  录音界面(screen_3)定时更新 - 在 audio_ui_update_lvgl 结尾调用
+ */
+void audio_ui_update_recorder(void)
+{
+    char buf[32];
+
+    if (guider_ui.screen_3 == NULL)
+        return;
+    if (g_audio_ui.current_page != UI_PAGE_RECORDER)
+        return;
+
+    if (!g_audio_ui.rec_updated)
+        return;
+    g_audio_ui.rec_updated = 0;
+
+    /* 更新录音时长 */
+    {
+        uint32_t d = g_audio_ui.rec_duration;
+        snprintf(buf, sizeof(buf), "%02d:%02d", (int)(d / 60), (int)(d % 60));
+        lv_label_set_text(guider_ui.screen_3_label_time, buf);
+    }
+
+    /* 更新文件大小 */
+    {
+        uint32_t kb = g_audio_ui.rec_size / 1024;
+        if (kb < 1024)
+            snprintf(buf, sizeof(buf), "%lu KB", (unsigned long)kb);
+        else
+            snprintf(buf, sizeof(buf), "%lu.%lu MB", (unsigned long)(kb / 1024), (unsigned long)((kb % 1024) * 10 / 1024));
+        lv_label_set_text(guider_ui.screen_3_label_size, buf);
+    }
+
+    /* 更新状态 */
+    switch (g_audio_ui.rec_state)
+    {
+    case 0: /* IDLE */
+        lv_label_set_text(guider_ui.screen_3_label_status, "Ready");
+        lv_label_set_text(guider_ui.screen_3_btn_rec_label, LV_SYMBOL_PLAY);
+        lv_obj_set_style_text_color(guider_ui.screen_3_label_led, lv_color_hex(0x666666), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_label_set_text(guider_ui.screen_3_label_led, LV_SYMBOL_STOP);
+        break;
+    case 1: /* RECORDING */
+        lv_label_set_text(guider_ui.screen_3_label_status, "Recording...");
+        lv_label_set_text(guider_ui.screen_3_btn_rec_label, LV_SYMBOL_STOP);
+        lv_obj_set_style_text_color(guider_ui.screen_3_label_led, lv_color_hex(0xff4444), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_label_set_text(guider_ui.screen_3_label_led, LV_SYMBOL_STOP);
+        break;
+    case 2: /* PAUSED */
+        lv_label_set_text(guider_ui.screen_3_label_status, "Paused");
+        lv_label_set_text(guider_ui.screen_3_btn_rec_label, LV_SYMBOL_PLAY);
+        lv_obj_set_style_text_color(guider_ui.screen_3_label_led, lv_color_hex(0xffaa00), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_label_set_text(guider_ui.screen_3_label_led, LV_SYMBOL_PAUSE);
+        break;
+    case 3: /* SAVING */
+        lv_label_set_text(guider_ui.screen_3_label_status, "Saving...");
+        break;
+    case 4: /* DONE */
+        lv_label_set_text(guider_ui.screen_3_label_status, "Saved!");
+        lv_label_set_text(guider_ui.screen_3_btn_rec_label, LV_SYMBOL_PLAY);
+        lv_obj_set_style_text_color(guider_ui.screen_3_label_led, lv_color_hex(0x44ff44), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_label_set_text(guider_ui.screen_3_label_led, LV_SYMBOL_OK);
+        break;
+    }
 }

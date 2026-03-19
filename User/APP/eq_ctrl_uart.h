@@ -6,5 +6,6 @@
 void eq_ctrl_uart_init(uint32_t baudrate);
 void eq_ctrl_uart_poll(void);
 void eq_ctrl_uart_send_text(const char *text);
+void eq_ctrl_uart_send_player_status(void);
 
 #endif

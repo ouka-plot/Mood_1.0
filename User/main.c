@@ -21,8 +21,6 @@
 #include "./BSP/SDIO/sdio_sdcard.h"
 #include "./BSP/ES8388/es8388.h"
 #include "./APP/audioplay.h"
-#include "./APP/audio_monitor.h"
-#include "./APP/tinyml_task.h"
 #include "./APP/audio_spectrum.h"
 #include "./APP/audio_eq.h"
 #include "./APP/eq_ctrl_uart.h"
@@ -152,24 +150,6 @@ static void vAudio_Task(void *pvParameters)
 	}
 }
 
-/* 音频检测回调函数 - 检测到高频声音(婴儿哭声)时调用 */
-static void audio_detect_callback(uint8_t detected, uint32_t energy, uint16_t zcr)
-{
-    if (detected)
-    {
-        printf("[AudioMonitor] High-freq sound DETECTED! Energy=%lu, ZCR=%u\r\n", energy, zcr);
-        LED0(0);  /* 点亮LED0表示检测到 */
-    }
-    else
-    {
-        printf("[AudioMonitor] Sound stopped. Energy=%lu, ZCR=%u\r\n", energy, zcr);
-        LED0(1);  /* 熄灭LED0 */
-    }
-}
-
-/* 音频监听任务外部声明 */
-extern TaskHandle_t g_audio_monitor_task_handle;
-
 
 int main(void)
 { 
@@ -207,15 +187,25 @@ int main(void)
     //     lcd_fill(30, 50, 200 + 30, 50 + 16, WHITE);
     //     delay_ms(200);
     // }
-    f_mount(&fs, "0:", 1);        /* 挂载SD卡 */
+    {
+        FRESULT fres = f_mount(&fs, "0:", 1);
+        if (fres != FR_OK)
+        {
+            printf("SD card mount failed! err=%d\r\n", (int)fres);
+        }
+        else
+        {
+            printf("SD card mounted OK\r\n");
+        }
+    }
 
     
     es8388_init();              /* ES8388初始化 */
-    es8388_adda_cfg(1, 0);      /* 开启DAC关闭ADC */
+    es8388_adda_cfg(1, 0);      /* 开启DAC关闭ADC，开播放 ，关录音*/
     es8388_output_cfg(1, 0);    /* OUT1(耳机)开, OUT2(喇叭)关 */
-    es8388_hpvol_set(10);       /* 设置耳机音量 (0~33) */
+    es8388_hpvol_set(20);       /* 设置耳机音量 (0~33), 20提升信噪比 */
     es8388_spkvol_set(0);       /* 设置喇叭音量 */
-	audio_ui_set_volume(33);     /* 同步默认耳机音量到UI(10/30约等于33%) */
+	audio_ui_set_volume(60);     /* 同步默认耳机音量到UI(20/33≈ 60%) */
 	audio_eq_init();
 	eq_ctrl_uart_init(115200);
     
@@ -246,26 +236,6 @@ int main(void)
 				NULL, \
 				1, \
 				NULL);
-	
-	/* 创建音频监听任务 */
-	xTaskCreate(vAudioMonitor_Task, \
-				"AudioMon", \
-				256, \
-				NULL, \
-				2, \
-				&g_audio_monitor_task_handle);
-	
-	/* 设置检测回调并启动后台监听 */
-	audio_monitor_set_callback(audio_detect_callback);
-	/* 注意：实际启动监听需要在音频系统初始化好后调用 audio_monitor_start() */
-	
-	/* 创建TinyML推理任务 */
-	xTaskCreate(vTinyML_Task, \
-				"TinyML", \
-				TINYML_TASK_STACK_SIZE, \
-				NULL, \
-				TINYML_TASK_PRIORITY, \
-				&g_tinyml_task_handle);
 	
 	vTaskStartScheduler();
 	

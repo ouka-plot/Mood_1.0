@@ -3857,8 +3857,8 @@ FRESULT f_open (
 FRESULT f_read (
 	FIL* fp, 	/* Open file to be read */
 	void* buff,	/* Data buffer to store the read data */
-	UINT btr,	/* Number of bytes to read */
-	UINT* br	/* Number of bytes read */
+	UINT btr,	/* Number of bytes to read  计划 */
+	UINT* br	/* Number of bytes read  实际 */
 )
 {
 	FRESULT res;

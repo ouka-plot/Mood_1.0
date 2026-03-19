@@ -32,19 +32,57 @@ static volatile uint16_t s_rx_line_len;
 static void eq_ctrl_uart_send_status(void)
 {
     audio_eq_status_t status;
-    char buffer[192];
+    char buffer[96];
+    uint8_t band;
 
     audio_eq_get_status(&status);
-    snprintf(buffer,
-             sizeof(buffer),
-             "EQ %s SR=%lu B1=%d B2=%d B3=%d B4=%d B5=%d\r\n",
-             status.enabled ? "ON" : "OFF",
-             (unsigned long)status.sample_rate,
-             (int)status.gain_db_x10[0],
-             (int)status.gain_db_x10[1],
-             (int)status.gain_db_x10[2],
-             (int)status.gain_db_x10[3],
-             (int)status.gain_db_x10[4]);
+
+    /* First line: EQ ON/OFF */
+    snprintf(buffer, sizeof(buffer), "EQ: %s\r\n",
+             status.enabled ? "ON" : "OFF");
+    eq_ctrl_uart_send_text(buffer);
+
+    /* Per-band lines: BAND n: freq=xxx gain=xxx Q=xxx */
+    for (band = 0U; band < AUDIO_EQ_BAND_COUNT; band++)
+    {
+        snprintf(buffer, sizeof(buffer),
+                 "BAND %u: freq=%u gain=%d Q=%u\r\n",
+                 (unsigned int)(band + 1U),
+                 (unsigned int)status.freq_hz[band],
+                 (int)status.gain_db_x10[band],
+                 (unsigned int)status.q_x100[band]);
+        eq_ctrl_uart_send_text(buffer);
+    }
+
+    /* Volume line */
+    snprintf(buffer, sizeof(buffer), "VOL: %u\r\n",
+             (unsigned int)g_audio_ui.vol_level);
+    eq_ctrl_uart_send_text(buffer);
+}
+
+void eq_ctrl_uart_send_player_status(void)
+{
+    char buffer[96];
+
+    snprintf(buffer, sizeof(buffer), "SONG: %s\r\n", g_audio_ui.song_name);
+    eq_ctrl_uart_send_text(buffer);
+
+    snprintf(buffer, sizeof(buffer), "TRACK: %u/%u\r\n",
+             (unsigned int)g_audio_ui.cur_index,
+             (unsigned int)g_audio_ui.total_files);
+    eq_ctrl_uart_send_text(buffer);
+
+    snprintf(buffer, sizeof(buffer), "TIME: %lu %lu\r\n",
+             (unsigned long)g_audio_ui.cur_time,
+             (unsigned long)g_audio_ui.total_time);
+    eq_ctrl_uart_send_text(buffer);
+
+    snprintf(buffer, sizeof(buffer), "PLAYING: %u\r\n",
+             (unsigned int)g_audio_ui.is_playing);
+    eq_ctrl_uart_send_text(buffer);
+
+    snprintf(buffer, sizeof(buffer), "VOL: %u\r\n",
+             (unsigned int)g_audio_ui.vol_level);
     eq_ctrl_uart_send_text(buffer);
 }
 
@@ -410,9 +448,43 @@ static void eq_ctrl_uart_handle_line(char *line)
         return;
     }
 
+    if (strcmp(cmd, "PLAY") == 0)
+    {
+        g_audio_ui.ui_cmd = UI_CMD_PLAY;
+        eq_ctrl_uart_send_ok_text("PLAY");
+        return;
+    }
+
+    if (strcmp(cmd, "PAUSE") == 0)
+    {
+        g_audio_ui.ui_cmd = UI_CMD_PAUSE;
+        eq_ctrl_uart_send_ok_text("PAUSE");
+        return;
+    }
+
+    if (strcmp(cmd, "NEXT") == 0)
+    {
+        g_audio_ui.ui_cmd = UI_CMD_NEXT;
+        eq_ctrl_uart_send_ok_text("NEXT");
+        return;
+    }
+
+    if (strcmp(cmd, "PREV") == 0)
+    {
+        g_audio_ui.ui_cmd = UI_CMD_PREV;
+        eq_ctrl_uart_send_ok_text("PREV");
+        return;
+    }
+
+    if (strcmp(cmd, "STATUS") == 0)
+    {
+        eq_ctrl_uart_send_player_status();
+        return;
+    }
+
     if (strcmp(cmd, "HELP") == 0)
     {
-        eq_ctrl_uart_send_text("PING|ID|HELP\r\nVOL 0..100\r\nEQ ON|OFF|STATUS|PRESET n\r\nEQ BAND n gain_x10|FREQ n hz|Q n q_x100|CFG n hz q_x100\r\n");
+        eq_ctrl_uart_send_text("PING|ID|STATUS|HELP\r\nVOL 0..100\r\nPLAY|PAUSE|NEXT|PREV\r\nEQ ON|OFF|STATUS|PRESET n\r\nEQ BAND n gain_x10|FREQ n hz|Q n q_x100|CFG n hz q_x100\r\n");
         return;
     }
 

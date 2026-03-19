@@ -98,115 +98,147 @@ void setup_scr_screen_2(lv_ui *ui)
     lv_obj_set_pos(ui->screen_2_label_cmd1, 126, 64);
     lv_obj_set_size(ui->screen_2_label_cmd1, 78, 18);
 
-    //Write codes screen_2_label_cmd2
+    //Write codes screen_2_label_cmd2 (BAND header)
     ui->screen_2_label_cmd2 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_cmd2, "BAND");
-    lv_label_set_long_mode(ui->screen_2_label_cmd2, LV_LABEL_LONG_WRAP);
-    lv_obj_set_pos(ui->screen_2_label_cmd2, 22, 116);
-    lv_obj_set_size(ui->screen_2_label_cmd2, 38, 16);
+    lv_label_set_long_mode(ui->screen_2_label_cmd2, LV_LABEL_LONG_CLIP);
+    lv_obj_set_pos(ui->screen_2_label_cmd2, 14, 116);
+    lv_obj_set_size(ui->screen_2_label_cmd2, 40, 16);
 
-    //Write codes screen_2_label_cmd3
+    //Write codes screen_2_label_status (FREQ header)
+    ui->screen_2_label_status = lv_label_create(ui->screen_2);
+    lv_label_set_text(ui->screen_2_label_status, "FREQ");
+    lv_obj_set_pos(ui->screen_2_label_status, 54, 116);
+    lv_obj_set_size(ui->screen_2_label_status, 42, 16);
+
+    //Write codes screen_2_label_cmd3 (GAIN header)
     ui->screen_2_label_cmd3 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_cmd3, "GAIN");
     lv_label_set_long_mode(ui->screen_2_label_cmd3, LV_LABEL_LONG_WRAP);
-    lv_obj_set_pos(ui->screen_2_label_cmd3, 160, 116);
+    lv_obj_set_pos(ui->screen_2_label_cmd3, 106, 116);
     lv_obj_set_size(ui->screen_2_label_cmd3, 44, 16);
 
-    //Write codes screen_2_label_status
-    ui->screen_2_label_status = lv_label_create(ui->screen_2);
-    lv_label_set_text(ui->screen_2_label_status, "FREQ");
-    lv_obj_set_pos(ui->screen_2_label_status, 92, 116);
-    lv_obj_set_size(ui->screen_2_label_status, 44, 16);
+    //Write codes screen_2_label_q_header (Q header)
+    ui->screen_2_label_q_header = lv_label_create(ui->screen_2);
+    lv_label_set_text(ui->screen_2_label_q_header, "Q");
+    lv_obj_set_pos(ui->screen_2_label_q_header, 160, 116);
+    lv_obj_set_size(ui->screen_2_label_q_header, 48, 16);
 
     //Write codes screen_2_label_band_1
     ui->screen_2_label_band_1 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_band_1, "B1");
-    lv_obj_set_pos(ui->screen_2_label_band_1, 20, 144);
+    lv_obj_set_pos(ui->screen_2_label_band_1, 14, 144);
     lv_obj_set_size(ui->screen_2_label_band_1, 28, 18);
 
     //Write codes screen_2_label_band_2
     ui->screen_2_label_band_2 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_band_2, "B2");
-    lv_obj_set_pos(ui->screen_2_label_band_2, 20, 170);
+    lv_obj_set_pos(ui->screen_2_label_band_2, 14, 170);
     lv_obj_set_size(ui->screen_2_label_band_2, 28, 18);
 
     //Write codes screen_2_label_band_3
     ui->screen_2_label_band_3 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_band_3, "B3");
-    lv_obj_set_pos(ui->screen_2_label_band_3, 20, 196);
+    lv_obj_set_pos(ui->screen_2_label_band_3, 14, 196);
     lv_obj_set_size(ui->screen_2_label_band_3, 28, 18);
 
     //Write codes screen_2_label_band_4
     ui->screen_2_label_band_4 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_band_4, "B4");
-    lv_obj_set_pos(ui->screen_2_label_band_4, 20, 222);
+    lv_obj_set_pos(ui->screen_2_label_band_4, 14, 222);
     lv_obj_set_size(ui->screen_2_label_band_4, 28, 18);
 
     //Write codes screen_2_label_band_5
     ui->screen_2_label_band_5 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_band_5, "B5");
-    lv_obj_set_pos(ui->screen_2_label_band_5, 20, 248);
+    lv_obj_set_pos(ui->screen_2_label_band_5, 14, 248);
     lv_obj_set_size(ui->screen_2_label_band_5, 28, 18);
 
     //Write codes screen_2_label_freq_1
     ui->screen_2_label_freq_1 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_freq_1, "----Hz");
-    lv_obj_set_pos(ui->screen_2_label_freq_1, 72, 144);
-    lv_obj_set_size(ui->screen_2_label_freq_1, 64, 18);
+    lv_obj_set_pos(ui->screen_2_label_freq_1, 42, 144);
+    lv_obj_set_size(ui->screen_2_label_freq_1, 54, 18);
 
     //Write codes screen_2_label_freq_2
     ui->screen_2_label_freq_2 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_freq_2, "----Hz");
-    lv_obj_set_pos(ui->screen_2_label_freq_2, 72, 170);
-    lv_obj_set_size(ui->screen_2_label_freq_2, 64, 18);
+    lv_obj_set_pos(ui->screen_2_label_freq_2, 42, 170);
+    lv_obj_set_size(ui->screen_2_label_freq_2, 54, 18);
 
     //Write codes screen_2_label_freq_3
     ui->screen_2_label_freq_3 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_freq_3, "----Hz");
-    lv_obj_set_pos(ui->screen_2_label_freq_3, 72, 196);
-    lv_obj_set_size(ui->screen_2_label_freq_3, 64, 18);
+    lv_obj_set_pos(ui->screen_2_label_freq_3, 42, 196);
+    lv_obj_set_size(ui->screen_2_label_freq_3, 54, 18);
 
     //Write codes screen_2_label_freq_4
     ui->screen_2_label_freq_4 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_freq_4, "----Hz");
-    lv_obj_set_pos(ui->screen_2_label_freq_4, 72, 222);
-    lv_obj_set_size(ui->screen_2_label_freq_4, 64, 18);
+    lv_obj_set_pos(ui->screen_2_label_freq_4, 42, 222);
+    lv_obj_set_size(ui->screen_2_label_freq_4, 54, 18);
 
     //Write codes screen_2_label_freq_5
     ui->screen_2_label_freq_5 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_freq_5, "----Hz");
-    lv_obj_set_pos(ui->screen_2_label_freq_5, 72, 248);
-    lv_obj_set_size(ui->screen_2_label_freq_5, 64, 18);
+    lv_obj_set_pos(ui->screen_2_label_freq_5, 42, 248);
+    lv_obj_set_size(ui->screen_2_label_freq_5, 54, 18);
 
     //Write codes screen_2_label_gain_1
     ui->screen_2_label_gain_1 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_gain_1, "+0.0dB");
-    lv_obj_set_pos(ui->screen_2_label_gain_1, 144, 144);
-    lv_obj_set_size(ui->screen_2_label_gain_1, 60, 18);
+    lv_obj_set_pos(ui->screen_2_label_gain_1, 100, 144);
+    lv_obj_set_size(ui->screen_2_label_gain_1, 56, 18);
 
     //Write codes screen_2_label_gain_2
     ui->screen_2_label_gain_2 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_gain_2, "+0.0dB");
-    lv_obj_set_pos(ui->screen_2_label_gain_2, 144, 170);
-    lv_obj_set_size(ui->screen_2_label_gain_2, 60, 18);
+    lv_obj_set_pos(ui->screen_2_label_gain_2, 100, 170);
+    lv_obj_set_size(ui->screen_2_label_gain_2, 56, 18);
 
     //Write codes screen_2_label_gain_3
     ui->screen_2_label_gain_3 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_gain_3, "+0.0dB");
-    lv_obj_set_pos(ui->screen_2_label_gain_3, 144, 196);
-    lv_obj_set_size(ui->screen_2_label_gain_3, 60, 18);
+    lv_obj_set_pos(ui->screen_2_label_gain_3, 100, 196);
+    lv_obj_set_size(ui->screen_2_label_gain_3, 56, 18);
 
     //Write codes screen_2_label_gain_4
     ui->screen_2_label_gain_4 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_gain_4, "+0.0dB");
-    lv_obj_set_pos(ui->screen_2_label_gain_4, 144, 222);
-    lv_obj_set_size(ui->screen_2_label_gain_4, 60, 18);
+    lv_obj_set_pos(ui->screen_2_label_gain_4, 100, 222);
+    lv_obj_set_size(ui->screen_2_label_gain_4, 56, 18);
 
     //Write codes screen_2_label_gain_5
     ui->screen_2_label_gain_5 = lv_label_create(ui->screen_2);
     lv_label_set_text(ui->screen_2_label_gain_5, "+0.0dB");
-    lv_obj_set_pos(ui->screen_2_label_gain_5, 144, 248);
-    lv_obj_set_size(ui->screen_2_label_gain_5, 60, 18);
+    lv_obj_set_pos(ui->screen_2_label_gain_5, 100, 248);
+    lv_obj_set_size(ui->screen_2_label_gain_5, 56, 18);
+
+    //Write codes screen_2 Q value labels
+    ui->screen_2_label_q_1 = lv_label_create(ui->screen_2);
+    lv_label_set_text(ui->screen_2_label_q_1, "1.00");
+    lv_obj_set_pos(ui->screen_2_label_q_1, 160, 144);
+    lv_obj_set_size(ui->screen_2_label_q_1, 48, 18);
+
+    ui->screen_2_label_q_2 = lv_label_create(ui->screen_2);
+    lv_label_set_text(ui->screen_2_label_q_2, "1.00");
+    lv_obj_set_pos(ui->screen_2_label_q_2, 160, 170);
+    lv_obj_set_size(ui->screen_2_label_q_2, 48, 18);
+
+    ui->screen_2_label_q_3 = lv_label_create(ui->screen_2);
+    lv_label_set_text(ui->screen_2_label_q_3, "1.00");
+    lv_obj_set_pos(ui->screen_2_label_q_3, 160, 196);
+    lv_obj_set_size(ui->screen_2_label_q_3, 48, 18);
+
+    ui->screen_2_label_q_4 = lv_label_create(ui->screen_2);
+    lv_label_set_text(ui->screen_2_label_q_4, "1.00");
+    lv_obj_set_pos(ui->screen_2_label_q_4, 160, 222);
+    lv_obj_set_size(ui->screen_2_label_q_4, 48, 18);
+
+    ui->screen_2_label_q_5 = lv_label_create(ui->screen_2);
+    lv_label_set_text(ui->screen_2_label_q_5, "1.00");
+    lv_obj_set_pos(ui->screen_2_label_q_5, 160, 248);
+    lv_obj_set_size(ui->screen_2_label_q_5, 48, 18);
 
     //Write codes screen_2_label_hint
     ui->screen_2_label_hint = lv_label_create(ui->screen_2);
@@ -269,6 +301,23 @@ void setup_scr_screen_2(lv_ui *ui)
     lv_obj_set_style_text_color(ui->screen_2_label_gain_5, lv_color_hex(0x2d241d), LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui->screen_2_label_gain_5, &lv_font_montserratMedium_12, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(ui->screen_2_label_gain_5, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->screen_2_label_q_header, lv_color_hex(0x2d241d), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui->screen_2_label_q_header, &lv_font_montserratMedium_12, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->screen_2_label_q_1, lv_color_hex(0x2d241d), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui->screen_2_label_q_1, &lv_font_montserratMedium_12, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(ui->screen_2_label_q_1, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->screen_2_label_q_2, lv_color_hex(0x2d241d), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui->screen_2_label_q_2, &lv_font_montserratMedium_12, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(ui->screen_2_label_q_2, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->screen_2_label_q_3, lv_color_hex(0x2d241d), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui->screen_2_label_q_3, &lv_font_montserratMedium_12, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(ui->screen_2_label_q_3, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->screen_2_label_q_4, lv_color_hex(0x2d241d), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui->screen_2_label_q_4, &lv_font_montserratMedium_12, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(ui->screen_2_label_q_4, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->screen_2_label_q_5, lv_color_hex(0x2d241d), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui->screen_2_label_q_5, &lv_font_montserratMedium_12, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(ui->screen_2_label_q_5, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(ui->screen_2_label_hint, lv_color_hex(0x5f3b20), LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui->screen_2_label_hint, &lv_font_montserratMedium_12, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(ui->screen_2_label_hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN|LV_STATE_DEFAULT);

@@ -22,6 +22,7 @@
 #define UI_PAGE_LOADING     0
 #define UI_PAGE_PLAYER      1
 #define UI_PAGE_EQ          2
+#define UI_PAGE_RECORDER    3
 
 /* 音频-UI 共享状态结构体 */
 typedef struct {
@@ -59,10 +60,13 @@ typedef struct {
     volatile uint8_t  vol_changed;       /* 音量变化标志 */
     volatile uint16_t vol_show_timer;    /* 弹出显示倒计时(LVGL周期数) */
     
-    /* === TinyML推理结果 (推理任务写入, UI任务读取) === */
-    uint8_t  classify_label;        /* 分类类别 (AudioClass_t) */
-    uint8_t  classify_updated;      /* 有新分类结果时置1, UI读取后清0 */
-    float    classify_confidence;   /* 置信度 0.0~1.0 */
+    /* === 录音状态 (Audio任务写入, UI任务读取) === */
+    volatile uint8_t  rec_state;         /* RecorderState_t */
+    volatile uint32_t rec_duration;      /* 录音时长(秒) */
+    volatile uint32_t rec_size;          /* 已录制大小(字节) */
+    volatile uint8_t  rec_updated;       /* 录音状态更新标志 */
+    volatile uint8_t  rec_enter_request; /* 请求进入录音界面 */
+    volatile uint8_t  rec_exit_request;  /* 请求退出录音界面 */
 } audio_ui_state_t;
 
 /* 全局共享状态实例 */
@@ -82,12 +86,15 @@ void audio_ui_set_spectrum(const uint8_t *bars);
 void audio_ui_set_volume(uint8_t level);
 void audio_ui_notify_eq_changed(void);
 
-/* TinyML推理任务调用的函数 */
-void audio_ui_set_classify_result(uint8_t label, float confidence);
-
 /* UI任务调用的函数 */
 void audio_ui_update_lvgl(void);
 void audio_ui_init_screen(void);
 void audio_ui_request_page_toggle(void);
+
+/* 录音相关 */
+void audio_ui_set_rec_state(uint8_t state);
+void audio_ui_set_rec_time(uint32_t duration, uint32_t size);
+void audio_ui_request_enter_recorder(void);
+void audio_ui_request_exit_recorder(void);
 
 #endif /* __AUDIO_UI_BRIDGE_H */

@@ -38,7 +38,14 @@
 #include "./APP/audio_eq.h"
 #include "FreeRTOS.h"
 #include "task.h"
-#include "./APP/audio_monitor.h"
+#include "./APP/recorder.h"
+
+/* 长按WAKE按键检测阈值(持续按住的KEY_Tick调用次数, 约500ms) */
+#define WAKE_LONG_PRESS_TICKS   100
+
+/* 前向声明 */
+static void wav_recorder_loop(void);
+
    volatile uint8_t g_debug_key=0;
    /* 
  * 全局静态缓冲区定义 
@@ -81,7 +88,7 @@ uint8_t wav_decode_init(char* fname, __wavctrl* wavx)
 	ftemp = &s_wav_file;    
     buf = s_wav_tbuf ;
     
-    if (ftemp && buf)    /* 内存申请成功 */
+    if (ftemp && buf)  
     {
         res = f_open(ftemp, (TCHAR*)fname, FA_READ);    /* 打开文件 */
         
@@ -144,10 +151,9 @@ uint8_t wav_decode_init(char* fname, __wavctrl* wavx)
     
     f_close(ftemp);
     
-//    myfree(SRAMIN, ftemp);      /* 释放内存 */
-//    myfree(SRAMIN, buf); 
+
     
-    return 0;
+    return res;
 }
 
 /**
@@ -207,9 +213,9 @@ void wav_i2s_dma_tx_callback(void)
 {
     uint16_t i;
 
-    if (DMA1_Stream4->CR & (1 << 19))
+    if (DMA1_Stream4->CR & (1 << 19)) // DMA传输完成中断标志位,说明刚才传输的是i2sbuf1,现在要传输i2sbuf2了
     {
-        wavwitchbuf = 0;
+        wavwitchbuf = 0;// 切换到i2sbuf2,cpu填充i2sbuf1
         
         if ((g_audiodev.status & 0x01) == 0)
         {
@@ -219,9 +225,9 @@ void wav_i2s_dma_tx_callback(void)
             }
         }
     }
-    else 
+    else // DMA传输完成中断标志位,说明刚才传输的是i2sbuf2,现在要传输i2sbuf1了
     {
-        wavwitchbuf = 1;
+        wavwitchbuf = 1;// 切换到i2sbuf1,cpu填充i2sbuf2
 
         if ((g_audiodev.status & 0x01) == 0)
         {
@@ -294,12 +300,6 @@ uint8_t wav_play_song(char* fname)
             i2s_samplerate_set(wavctrl.samplerate);     /* 设置采样率 */
             audio_eq_set_sample_rate(wavctrl.samplerate);
             
-            /* 重新初始化I2S2ext, 因为i2s_init()会重置I2S2外设 */
-            if (audio_monitor_get_mode() != AUDIO_MONITOR_MODE_OFF) {
-                i2s2ext_init();
-                i2s_record_start();
-            }
-            
             i2s_tx_dma_init(g_audiodev.i2sbuf1, g_audiodev.i2sbuf2, WAV_I2S_TX_DMA_BUFSIZE / 2);   /* 配置TX DMA */
             i2s_tx_callback = wav_i2s_dma_tx_callback;  /* 回调函数指wav_i2s_dma_callback */
             audio_stop();
@@ -360,6 +360,79 @@ uint8_t wav_play_song(char* fname)
 						KEY_Tick();
 						key = KEY_GetKeyDown();
 						 g_debug_key=key;
+
+                        /* ====== 长按WAKE检测 ====== */
+                        {
+                            static uint16_t wake_hold_count = 0;//记录长按时长
+                            static uint8_t  wake_long_fired = 0;//是否触发长按
+                            
+                            if (KEY_GetState() & KEY_WAKE_PRES)
+                            {
+                                wake_hold_count++;
+                                if (wake_hold_count >= WAKE_LONG_PRESS_TICKS && !wake_long_fired)
+                                {
+                                    wake_long_fired = 1;
+                                    /* 长按触发 → 进入录音模式 */
+                                    audio_stop();  /* 停止当前播放 */
+                                    audio_ui_set_playing(0);
+                                    audio_ui_request_enter_recorder();
+                                    
+                                    /* 进入录音循环 */
+                                    wav_recorder_loop();
+                                    
+                                    /* 录音结束, 恢复播放 */
+                                    audio_ui_request_exit_recorder();
+                                    wake_hold_count = 0;
+                                    wake_long_fired = 0;
+                                    /* 关闭当前播放文件, 返回外层重新打开 */
+                                    f_close(g_audiodev.file);
+                                    /* 重新设置当前曲目 → 返回播放循环 */
+                                    res = KEY_WAKE_PRES;  /* 让外层重新播放当前曲目 */
+                                    goto wav_play_exit;
+                                }
+                            }
+                            else
+                            {
+                                if (wake_hold_count > 0 && !wake_long_fired)
+                                {
+                                    /* 短按释放 → 切换页面 */
+                                    audio_ui_request_page_toggle();
+                                }
+                                wake_hold_count = 0;
+                                wake_long_fired = 0;
+                            }
+                        }
+
+                        /* ===== 处理 UART/BLE 远程命令 ===== */
+                        if (g_audio_ui.ui_cmd != UI_CMD_NONE)
+                        {
+                            uint8_t ucmd = g_audio_ui.ui_cmd;
+                            g_audio_ui.ui_cmd = UI_CMD_NONE;
+
+                            if (ucmd == UI_CMD_PLAY)
+                            {
+                                g_audiodev.status |= 0x01;
+                                audio_ui_set_playing(1);
+                            }
+                            else if (ucmd == UI_CMD_PAUSE)
+                            {
+                                g_audiodev.status &= ~(1 << 0);
+                                audio_ui_set_playing(0);
+                            }
+                            else if (ucmd == UI_CMD_NEXT)
+                            {
+                                audio_ui_set_btn_pressed(1);
+                                res = KEY1_PRES;
+                                break;
+                            }
+                            else if (ucmd == UI_CMD_PREV)
+                            {
+                                audio_ui_set_btn_pressed(0);
+                                res = KEY0_PRES;
+                                break;
+                            }
+                        }
+
                         if (key & KEY2_PRES)   /* KEY2 = 暂停/继续播放 */
                         {
                             audio_ui_set_btn_pressed(2);  /* 按钮按下视觉反馈 */
@@ -389,10 +462,7 @@ uint8_t wav_play_song(char* fname)
                             break;
                         }
                         
-                        if (key & KEY_WAKE_PRES)
-                        {
-                            audio_ui_request_page_toggle();
-                        }
+                        /* KEY_WAKE 长按/短按已在上方统一处理 */
                         
                         wav_get_curtime(g_audiodev.file, &wavctrl); /* 得到总时间和当前播放的时间 */
                         audio_msg_show(wavctrl.totsec, wavctrl.cursec, wavctrl.bitrate);
@@ -431,7 +501,8 @@ uint8_t wav_play_song(char* fname)
     {
         res = 0xFF;
     }
-    
+
+ wav_play_exit:   
 //    myfree(SRAMIN, g_audiodev.tbuf);      /* 释放内存 */
 //    myfree(SRAMIN, g_audiodev.i2sbuf1);   /* 释放内存 */
 //    myfree(SRAMIN, g_audiodev.i2sbuf2);   /* 释放内存 */
@@ -440,5 +511,125 @@ uint8_t wav_play_song(char* fname)
     return res;
 }
 
-
-
+/**
+ * @brief       录音循环 - 处理录音期间的按键和状态更新
+ * @note        在播放循环中，长按WAKE进入此函数
+ *              KEY2(暂停键) = 开始/停止录音
+ *              KEY1(下一首) = 暂停/恢复录音
+ *              KEY_WAKE 长按 = 退出录音返回播放
+ */
+static void wav_recorder_loop(void)
+{
+    uint8_t key;
+    uint16_t wake_hold = 0;
+    uint8_t  wake_long_fired = 0;
+    
+    /* 初始化录音模块 */
+    recorder_init();
+    audio_ui_set_rec_state(RECORDER_STATE_IDLE);
+    audio_ui_set_rec_time(0, 0);
+    
+    printf("[Recorder] Entered recorder mode\r\n");
+    
+    /* 等待WAKE按键释放，防止进入后立即触发退出 */
+    while (KEY_GetState() & KEY_WAKE_PRES)
+    {
+        KEY_Tick();
+        vTaskDelay(10);
+    }
+    /* 清除释放期间积累的事件 */
+    KEY_GetKeyDown();
+    KEY_GetKeyUp();
+    
+    while (1)
+    {
+        KEY_Tick();
+        key = KEY_GetKeyDown();
+        
+        /* ====== 长按WAKE检测 → 退出录音模式 ====== */
+        if (KEY_GetState() & KEY_WAKE_PRES)
+        {
+            wake_hold++;
+            if (wake_hold >= WAKE_LONG_PRESS_TICKS && !wake_long_fired)
+            {
+                wake_long_fired = 1;
+                /* 如果正在录音，先停止 */
+                if (recorder_get_state() == RECORDER_STATE_RECORDING ||
+                    recorder_get_state() == RECORDER_STATE_PAUSED)
+                {
+                    recorder_stop();
+                }
+                printf("[Recorder] Exit recorder mode\r\n");
+                
+                /* 恢复ES8388为播放模式 */
+                es8388_adda_cfg(1, 0);
+                es8388_output_cfg(1, 0);
+                
+                /* 等待WAKE按键释放，防止回到播放循环后误触发 */
+                while (KEY_GetState() & KEY_WAKE_PRES)
+                {
+                    KEY_Tick();
+                    vTaskDelay(10);
+                }
+                KEY_GetKeyDown();
+                KEY_GetKeyUp();
+                
+                break;
+            }
+        }
+        else
+        {
+            wake_hold = 0;
+            wake_long_fired = 0;
+        }
+        
+        /* KEY2 = 开始录音 / 停止录音 */
+        if (key & KEY2_PRES)
+        {
+            RecorderState_t st = recorder_get_state();
+            if (st == RECORDER_STATE_IDLE || st == RECORDER_STATE_DONE)
+            {
+                /* 开始新录音 */
+                if (recorder_start() == 0)
+                {
+                    audio_ui_set_rec_state(RECORDER_STATE_RECORDING);
+                }
+            }
+            else if (st == RECORDER_STATE_RECORDING || st == RECORDER_STATE_PAUSED)
+            {
+                /* 停止录音 */
+                recorder_stop();
+                audio_ui_set_rec_state(RECORDER_STATE_DONE);
+                audio_ui_set_rec_time(recorder_get_duration(), recorder_get_data_size());
+            }
+        }
+        
+        /* KEY1 = 暂停/恢复录音 */
+        if (key & KEY1_PRES)
+        {
+            RecorderState_t st = recorder_get_state();
+            if (st == RECORDER_STATE_RECORDING)
+            {
+                recorder_pause();
+                audio_ui_set_rec_state(RECORDER_STATE_PAUSED);
+            }
+            else if (st == RECORDER_STATE_PAUSED)
+            {
+                recorder_resume();
+                audio_ui_set_rec_state(RECORDER_STATE_RECORDING);
+            }
+        }
+        
+        /* 处理DMA数据写入SD卡 */
+        recorder_process();
+        
+        /* 更新UI时间显示 */
+        if (recorder_get_state() == RECORDER_STATE_RECORDING ||
+            recorder_get_state() == RECORDER_STATE_PAUSED)
+        {
+            audio_ui_set_rec_time(recorder_get_duration(), recorder_get_data_size());
+        }
+        
+        vTaskDelay(5);  /* 5ms周期 */
+    }
+}

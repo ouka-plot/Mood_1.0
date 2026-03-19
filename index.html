@@ -1,0 +1,1462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Mood 音频控制器</title>
+<style>
+:root {
+  --bg: #0d0d1a;
+  --card: #161625;
+  --card-hover: #1e1e32;
+  --primary: #6c5ce7;
+  --primary-light: #a29bfe;
+  --accent: #00cec9;
+  --text: #dfe6e9;
+  --text-dim: #636e72;
+  --danger: #ff7675;
+  --success: #00b894;
+  --border: #2d2d44;
+  --radius: 14px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Header ── */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, var(--card), #1a1a2e);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+.header h1 {
+  font-size: 20px; font-weight: 700;
+  background: linear-gradient(135deg, var(--primary-light), var(--accent));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.ble-status {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--text-dim);
+}
+.ble-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--danger);
+  transition: background 0.3s;
+}
+.ble-dot.connected { background: var(--success); box-shadow: 0 0 8px var(--success); }
+
+#btn-connect {
+  padding: 8px 18px;
+  border: 1px solid var(--primary);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--primary-light);
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+#btn-connect:hover { background: var(--primary); color: #fff; }
+#btn-connect.connected {
+  border-color: var(--danger); color: var(--danger);
+}
+#btn-connect.connected:hover { background: var(--danger); color: #fff; }
+
+/* ── Tab Navigation ── */
+.tabs {
+  display: flex;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  flex: 1;
+  padding: 14px;
+  text-align: center;
+  font-size: 14px; font-weight: 600;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s;
+}
+.tab.active {
+  color: var(--primary-light);
+  border-bottom-color: var(--primary);
+  background: rgba(108, 92, 231, 0.06);
+}
+
+/* ── Page Containers ── */
+.page { display: none; padding: 20px; animation: fadeIn 0.3s ease; }
+.page.active { display: block; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── Player Page ── */
+.player-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+.album-art {
+  width: 180px; height: 180px;
+  margin: 0 auto 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 60px;
+  box-shadow: 0 0 40px rgba(108, 92, 231, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+.album-art.playing { animation: spin 8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.album-art::after {
+  content: '';
+  width: 40px; height: 40px;
+  background: var(--bg);
+  border-radius: 50%;
+  position: absolute;
+}
+.song-title {
+  font-size: 18px; font-weight: 700;
+  margin-bottom: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%;
+}
+.song-artist {
+  font-size: 14px; color: var(--primary-light);
+  margin-bottom: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%;
+}
+.song-info {
+  font-size: 13px; color: var(--text-dim);
+  margin-bottom: 20px;
+}
+
+/* Progress */
+.progress-container { margin-bottom: 24px; }
+.progress-bar-bg {
+  width: 100%; height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  cursor: pointer;
+}
+.progress-bar-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+  border-radius: 3px;
+  transition: width 0.5s linear;
+}
+.time-display {
+  display: flex; justify-content: space-between;
+  font-size: 12px; color: var(--text-dim);
+  margin-top: 6px;
+}
+
+/* Controls */
+.controls {
+  display: flex; align-items: center; justify-content: center; gap: 20px;
+  margin-bottom: 24px;
+}
+.ctrl-btn {
+  width: 52px; height: 52px;
+  border: none; border-radius: 50%;
+  background: var(--card-hover);
+  color: var(--text);
+  font-size: 22px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.ctrl-btn:hover { background: var(--primary); transform: scale(1.08); }
+.ctrl-btn:active { transform: scale(0.95); }
+.ctrl-btn.play-btn {
+  width: 64px; height: 64px;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  font-size: 26px;
+  box-shadow: 0 4px 20px rgba(108, 92, 231, 0.4);
+}
+.ctrl-btn.play-btn:hover { transform: scale(1.1); }
+
+/* Volume */
+.volume-section {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  margin-top: 16px;
+  box-shadow: var(--shadow);
+}
+.section-title {
+  font-size: 14px; font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.vol-row {
+  display: flex; align-items: center; gap: 14px;
+}
+.vol-icon { font-size: 20px; color: var(--primary-light); }
+.vol-slider {
+  flex: 1; -webkit-appearance: none; appearance: none;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  outline: none;
+}
+.vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(108, 92, 231, 0.5);
+}
+.vol-value {
+  min-width: 36px; text-align: right;
+  font-size: 14px; font-weight: 600;
+  color: var(--primary-light);
+}
+
+/* ── EQ Page ── */
+.eq-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.eq-toggle {
+  display: flex; align-items: center; gap: 10px;
+}
+.toggle-switch {
+  position: relative;
+  width: 48px; height: 26px;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; inset: 0;
+  background: var(--border);
+  border-radius: 13px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 20px; height: 20px;
+  left: 3px; bottom: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: 0.3s;
+}
+.toggle-switch input:checked + .toggle-slider { background: var(--primary); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(22px); }
+
+.preset-row {
+  display: flex; align-items: center; gap: 10px;
+}
+.preset-select {
+  padding: 8px 14px;
+  background: var(--card-hover);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.preset-select option { background: var(--card); }
+.preset-desc {
+  font-size: 11px;
+  color: var(--accent);
+  max-width: 120px;
+  line-height: 1.3;
+}
+
+.eq-bands {
+  display: flex;
+  gap: 10px;
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 24px 16px;
+  box-shadow: var(--shadow);
+}
+.eq-band {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.eq-band-label {
+  font-size: 11px; color: var(--text-dim); font-weight: 600;
+}
+.eq-slider-container {
+  height: 180px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: relative;
+}
+.eq-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 180px; height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  outline: none;
+  transform: rotate(-90deg);
+}
+.eq-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(108, 92, 231, 0.4);
+}
+.eq-gain-label {
+  font-size: 13px; font-weight: 700;
+  color: var(--primary-light);
+  min-height: 20px;
+}
+.eq-freq-label {
+  font-size: 11px; color: var(--text-dim);
+}
+.eq-zero-line {
+  position: absolute;
+  width: 100%; height: 1px;
+  background: var(--border);
+  top: 50%;
+}
+
+/* Freq edit section */
+.eq-freq-section {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-top: 16px;
+  box-shadow: var(--shadow);
+}
+.freq-band-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.freq-band-row:last-child { border-bottom: none; }
+.freq-label { min-width: 32px; font-size: 13px; font-weight: 600; color: var(--text-dim); }
+.freq-input {
+  width: 80px;
+  padding: 5px 8px;
+  background: var(--card-hover);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  text-align: center;
+}
+.freq-input:focus { border-color: var(--primary); outline: none; }
+.freq-unit { font-size: 12px; color: var(--text-dim); }
+
+/* Q Factor section */
+.eq-q-section {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-top: 16px;
+  box-shadow: var(--shadow);
+}
+.q-band-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.q-band-row:last-child { border-bottom: none; }
+.q-label { min-width: 32px; font-size: 13px; font-weight: 600; color: var(--text-dim); }
+.q-slider {
+  flex: 1; -webkit-appearance: none; appearance: none;
+  height: 4px; background: var(--border); border-radius: 2px; outline: none;
+}
+.q-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); cursor: pointer;
+}
+.q-value { min-width: 40px; text-align: right; font-size: 13px; color: var(--accent); }
+.q-hint { font-size: 10px; color: var(--text-dim); min-width: 48px; }
+
+/* ── Console Page ── */
+.console-box {
+  background: #0a0a12;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  height: 50vh;
+  overflow-y: auto;
+  padding: 12px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.console-box .rx { color: var(--accent); }
+.console-box .tx { color: var(--primary-light); }
+.console-box .sys { color: var(--text-dim); font-style: italic; }
+.cmd-row {
+  display: flex; gap: 10px;
+  margin-top: 12px;
+}
+.cmd-input {
+  flex: 1;
+  padding: 10px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+}
+.cmd-input:focus { border-color: var(--primary); }
+.cmd-send {
+  padding: 10px 20px;
+  background: var(--primary);
+  border: none; border-radius: 8px;
+  color: #fff; font-weight: 600;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.cmd-send:hover { background: var(--primary-light); }
+
+/* ── Toast ── */
+.toast {
+  position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(80px);
+  padding: 12px 24px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transition: all 0.3s ease;
+  z-index: 999;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── Disabled State ── */
+.disabled { opacity: 0.4; pointer-events: none; }
+
+/* ── EQ Disabled Hint ── */
+.eq-disabled-hint {
+  display: none;
+  padding: 10px 16px;
+  background: rgba(255, 118, 117, 0.1);
+  border: 1px solid rgba(255, 118, 117, 0.25);
+  border-radius: 10px;
+  color: var(--danger);
+  font-size: 13px;
+  text-align: center;
+  margin-bottom: 12px;
+  animation: fadeIn 0.3s ease;
+}
+.eq-disabled-hint.show { display: block; }
+.eq-content-dimmed { opacity: 0.5; transition: opacity 0.3s; }
+
+/* ── Parametric EQ Graph ── */
+.eq-graph-wrap {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow);
+}
+.eq-graph-title {
+  font-size: 14px; font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+#eq-graph-canvas {
+  width: 100%;
+  height: 220px;
+  border-radius: 8px;
+  touch-action: none;
+  cursor: crosshair;
+}
+.eq-graph-legend {
+  display: flex; gap: 12px; flex-wrap: wrap;
+  margin-top: 10px; justify-content: center;
+}
+.eq-graph-legend-item {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--text-dim);
+}
+.eq-graph-legend-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+}
+
+/* ── Responsive ── */
+@media (max-width: 380px) {
+  .eq-bands { gap: 6px; padding: 20px 10px; }
+  .controls { gap: 14px; }
+  #eq-graph-canvas { height: 180px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>🎵 Mood</h1>
+  <div class="ble-status">
+    <div class="ble-dot" id="ble-dot"></div>
+    <span id="ble-label">未连接</span>
+  </div>
+  <button id="btn-connect">连接设备</button>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <div class="tab active" data-page="player">🎶 播放</div>
+  <div class="tab" data-page="eq">🎛️ 均衡器</div>
+  <div class="tab" data-page="console">📟 终端</div>
+</div>
+
+<!-- Player Page -->
+<div class="page active" id="page-player">
+  <div class="player-card">
+    <div class="album-art" id="album-art">🎵</div>
+    <div class="song-title" id="song-title">等待连接...</div>
+    <div class="song-artist" id="song-artist"></div>
+    <div class="song-info" id="song-info">--/-- 曲</div>
+
+    <div class="progress-container">
+      <div class="progress-bar-bg" id="progress-bg">
+        <div class="progress-bar-fill" id="progress-fill"></div>
+      </div>
+      <div class="time-display">
+        <span id="time-cur">0:00</span>
+        <span id="time-total">0:00</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-prev" title="上一曲">⏮</button>
+      <button class="ctrl-btn play-btn" id="btn-play" title="播放/暂停">▶</button>
+      <button class="ctrl-btn" id="btn-next" title="下一曲">⏭</button>
+    </div>
+  </div>
+
+  <div class="volume-section">
+    <div class="section-title">🔊 音量</div>
+    <div class="vol-row">
+      <span class="vol-icon">🔈</span>
+      <input type="range" class="vol-slider" id="vol-slider" min="0" max="100" value="50">
+      <span class="vol-value" id="vol-value">50</span>
+    </div>
+  </div>
+</div>
+
+<!-- EQ Page -->
+<div class="page" id="page-eq">
+  <div class="eq-header">
+    <div class="eq-toggle">
+      <span style="font-size: 14px; font-weight: 600;">均衡器</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="eq-switch">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="preset-row">
+      <select class="preset-select" id="eq-preset">
+        <option value="0">🎚️ 平坦 - 无修饰原音</option>
+        <option value="1">🎸 摇滚 - 强劲低音+明亮高音</option>
+        <option value="2">🎤 流行 - 突出人声中频</option>
+        <option value="3">🎷 爵士 - 温暖中低频</option>
+        <option value="4">🎻 古典 - 宽广动态自然</option>
+        <option value="5">🎧 电子 - 超低音增强+高频闪亮</option>
+        <option value="6">🎵 乡村 - 柔和温暖舒缓</option>
+        <option value="7">🎙️ 人声增强 - 播客/有声书</option>
+        <option value="8">🔊 低音炮 - 极致低频震撼</option>
+        <option value="9">✨ HiFi - 哈曼曲线参考</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="eq-hint" class="eq-disabled-hint">⚠ 均衡器已关闭 · 参数修改暂不生效</div>
+
+  <div id="eq-content">
+    <div class="eq-graph-wrap">
+      <div class="eq-graph-title">📊 频率响应 <span style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:8px">拖拽控制点调整频率和增益</span></div>
+      <canvas id="eq-graph-canvas"></canvas>
+      <div class="eq-graph-legend">
+        <div class="eq-graph-legend-item"><span class="eq-graph-legend-dot" style="background:#ff6b6b"></span>B1</div>
+        <div class="eq-graph-legend-item"><span class="eq-graph-legend-dot" style="background:#feca57"></span>B2</div>
+        <div class="eq-graph-legend-item"><span class="eq-graph-legend-dot" style="background:#00b894"></span>B3</div>
+        <div class="eq-graph-legend-item"><span class="eq-graph-legend-dot" style="background:#48dbfb"></span>B4</div>
+        <div class="eq-graph-legend-item"><span class="eq-graph-legend-dot" style="background:#a29bfe"></span>B5</div>
+      </div>
+    </div>
+
+    <div class="eq-bands" id="eq-bands">
+      <!-- Generated by JS -->
+    </div>
+
+    <div class="eq-q-section">
+      <div class="section-title">🎯 Q 值 (带宽控制)</div>
+      <div id="q-bands">
+        <!-- Generated by JS -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Console Page -->
+<div class="page" id="page-console">
+  <div class="console-box" id="console-box"></div>
+  <div class="cmd-row">
+    <input class="cmd-input" id="cmd-input" placeholder="输入命令... (如 PING, STATUS, VOL 50, EQ STATUS)" autocomplete="off">
+    <button class="cmd-send" id="cmd-send">发送</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// BLE NUS UUIDs (Nordic UART Service)
+// ═══════════════════════════════════════════════════════
+const NUS_SERVICE_UUID   = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_TX_CHAR_UUID   = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // Notify (device → phone)
+const NUS_RX_CHAR_UUID   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // Write  (phone → device)
+
+// ═══════════════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════════════
+let bleDevice = null;
+let rxChar = null;
+let connected = false;
+let isPlaying = false;
+let pollTimer = null;
+
+// EQ
+const EQ_BANDS_COUNT = 5;
+const defaultFreqs = [60, 250, 1000, 4000, 12000];
+let eqGains = [0, 0, 0, 0, 0];
+let eqFreqs = [...defaultFreqs];
+let eqQ     = [1.0, 1.0, 1.0, 1.0, 1.0];
+let eqEnabled = false;
+
+// Player
+let curTime = 0, totalTime = 0;
+
+// ═══════════════════════════════════════════════════════
+// DOM refs
+// ═══════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+
+// ═══════════════════════════════════════════════════════
+// Toast
+// ═══════════════════════════════════════════════════════
+function toast(msg, duration = 2000) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), duration);
+}
+
+// ═══════════════════════════════════════════════════════
+// Time formatting
+// ═══════════════════════════════════════════════════════
+function fmtTime(sec) {
+  sec = Math.max(0, sec|0);
+  const m = (sec / 60)|0;
+  const s = sec % 60;
+  return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+// ═══════════════════════════════════════════════════════
+// Song name parsing: "歌手 - 歌名.wav" → {title, artist}
+// ═══════════════════════════════════════════════════════
+function parseSongName(raw) {
+  // Remove .wav extension
+  let name = raw.replace(/\.wav$/i, '').trim();
+  // Try "Artist - Title" pattern
+  const sep = name.indexOf(' - ');
+  if (sep > 0) {
+    return { artist: name.substring(0, sep).trim(), title: name.substring(sep + 3).trim() };
+  }
+  // Try "Artist-Title" pattern (without spaces)
+  const sep2 = name.indexOf('-');
+  if (sep2 > 0 && sep2 < name.length - 1) {
+    return { artist: name.substring(0, sep2).trim(), title: name.substring(sep2 + 1).trim() };
+  }
+  return { artist: '', title: name };
+}
+
+// ═══════════════════════════════════════════════════════
+// Tab switching
+// ═══════════════════════════════════════════════════════
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    $('page-' + tab.dataset.page).classList.add('active');
+    if (tab.dataset.page === 'eq' && gCtx) {
+      resizeEqGraph();
+      drawEqGraph();
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════
+// BLE Connection
+// ═══════════════════════════════════════════════════════
+$('btn-connect').addEventListener('click', async () => {
+  if (connected) {
+    disconnect();
+    return;
+  }
+  try {
+    toast('正在扫描蓝牙设备...');
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'Mood' }],
+      optionalServices: [NUS_SERVICE_UUID]
+    });
+    bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+    toast('正在连接...');
+    const server = await bleDevice.gatt.connect();
+    const service = await server.getPrimaryService(NUS_SERVICE_UUID);
+
+    const txChar = await service.getCharacteristic(NUS_TX_CHAR_UUID);
+    await txChar.startNotifications();
+    txChar.addEventListener('characteristicvaluechanged', onBleReceive);
+
+    rxChar = await service.getCharacteristic(NUS_RX_CHAR_UUID);
+
+    setConnected(true);
+    toast('已连接 ' + (bleDevice.name || '设备'));
+
+    // Initial sync
+    setTimeout(async () => {
+      await sendCmd('STATUS');
+      await sendCmd('EQ STATUS');
+    }, 300);
+  } catch (err) {
+    if (err.name !== 'NotFoundError') {
+      toast('连接失败: ' + err.message);
+      consolePrint('sys', '连接失败: ' + err.message);
+    }
+  }
+});
+
+function disconnect() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (bleDevice && bleDevice.gatt.connected) {
+    bleDevice.gatt.disconnect();
+  }
+  setConnected(false);
+}
+
+function onDisconnected() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  setConnected(false);
+  toast('蓝牙连接已断开');
+  consolePrint('sys', '连接已断开');
+}
+
+function setConnected(state) {
+  connected = state;
+  $('ble-dot').classList.toggle('connected', state);
+  $('ble-label').textContent = state ? '已连接' : '未连接';
+  $('btn-connect').textContent = state ? '断开' : '连接设备';
+  $('btn-connect').classList.toggle('connected', state);
+
+  ['page-player', 'page-eq'].forEach(id => {
+    const el = $(id);
+    if (!state) el.classList.add('disabled');
+    else el.classList.remove('disabled');
+  });
+
+  // Start/stop periodic polling for player status
+  if (state && !pollTimer) {
+    pollTimer = setInterval(() => { sendCmd('STATUS'); }, 1000);
+  } else if (!state && pollTimer) {
+    clearInterval(pollTimer); pollTimer = null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// BLE Send / Receive
+// ═══════════════════════════════════════════════════════
+const encoder = new TextEncoder();
+
+let cmdQueue = Promise.resolve();
+async function sendCmd(cmd) {
+  // Serialize sends to avoid BLE write conflicts
+  cmdQueue = cmdQueue.then(() => _sendCmd(cmd)).catch(() => {});
+  return cmdQueue;
+}
+
+async function _sendCmd(cmd) {
+  if (!rxChar || !connected) return;
+  const data = cmd.endsWith('\n') ? cmd : cmd + '\n';
+  const bytes = encoder.encode(data);
+  const CHUNK = 20;
+  try {
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      const chunk = bytes.slice(i, i + CHUNK);
+      await rxChar.writeValueWithoutResponse(chunk);
+      if (i + CHUNK < bytes.length) {
+        await new Promise(r => setTimeout(r, 30));
+      }
+    }
+    // Don't log STATUS polls to avoid console spam
+    if (cmd !== 'STATUS') consolePrint('tx', cmd);
+  } catch (err) {
+    consolePrint('sys', '发送失败: ' + err.message);
+  }
+}
+
+// Accumulate raw bytes to avoid splitting multi-byte UTF-8 across BLE chunks
+let rxBytes = new Uint8Array(0);
+const lineDecoder = new TextDecoder('utf-8');
+
+function onBleReceive(event) {
+  const incoming = new Uint8Array(event.target.value.buffer);
+  const merged = new Uint8Array(rxBytes.length + incoming.length);
+  merged.set(rxBytes);
+  merged.set(incoming, rxBytes.length);
+  rxBytes = merged;
+
+  // Process complete lines (delimited by 0x0A = '\n')
+  let start = 0;
+  for (let i = 0; i < rxBytes.length; i++) {
+    if (rxBytes[i] === 0x0A) {
+      const lineBytes = rxBytes.slice(start, i);
+      start = i + 1;
+      let line = lineDecoder.decode(lineBytes).replace(/\r$/, '');
+      if (line.length > 0) {
+        processResponse(line);
+        if (!line.startsWith('SONG:') && !line.startsWith('TRACK:') &&
+            !line.startsWith('TIME:') && !line.startsWith('PLAYING:')) {
+          consolePrint('rx', line);
+        }
+      }
+    }
+  }
+  rxBytes = rxBytes.slice(start);
+}
+
+// ═══════════════════════════════════════════════════════
+// Response Parser
+// ═══════════════════════════════════════════════════════
+function processResponse(line) {
+  const parts = line.trim().split(/\s+/);
+
+  // PONG
+  if (line === 'PONG') {
+    toast('✓ 设备响应正常');
+    return;
+  }
+
+  // ── STATUS responses (player info) ──
+  // SONG: filename.wav
+  if (line.startsWith('SONG:')) {
+    const raw = line.substring(5).trim();
+    const { title, artist } = parseSongName(raw);
+    $('song-title').textContent = title || '未知曲目';
+    $('song-artist').textContent = artist || '';
+    $('song-artist').style.display = artist ? 'block' : 'none';
+    return;
+  }
+
+  // TRACK: cur/total
+  if (line.startsWith('TRACK:')) {
+    const m = line.match(/TRACK:\s*(\d+)\/(\d+)/);
+    if (m) {
+      $('song-info').textContent = m[1] + '/' + m[2] + ' 曲';
+    }
+    return;
+  }
+
+  // TIME: cur total
+  if (line.startsWith('TIME:')) {
+    const m = line.match(/TIME:\s*(\d+)\s+(\d+)/);
+    if (m) {
+      curTime = parseInt(m[1]);
+      totalTime = parseInt(m[2]);
+      $('time-cur').textContent = fmtTime(curTime);
+      $('time-total').textContent = fmtTime(totalTime);
+      const pct = totalTime > 0 ? (curTime / totalTime * 100) : 0;
+      $('progress-fill').style.width = Math.min(100, pct) + '%';
+    }
+    return;
+  }
+
+  // PLAYING: 1/0
+  if (line.startsWith('PLAYING:')) {
+    const val = parseInt(line.split(':')[1]);
+    isPlaying = val === 1;
+    $('btn-play').textContent = isPlaying ? '⏸' : '▶';
+    $('album-art').classList.toggle('playing', isPlaying);
+    return;
+  }
+
+  // ── OK responses ──
+  // OK VOL n
+  if (parts[0] === 'OK' && parts[1] === 'VOL') {
+    const v = parseInt(parts[2]);
+    if (!isNaN(v)) {
+      $('vol-slider').value = v;
+      $('vol-value').textContent = v;
+    }
+    return;
+  }
+
+  // OK EQ ON / OFF
+  if (parts[0] === 'OK' && parts[1] === 'EQ') {
+    if (parts[2] === 'ON') {
+      eqEnabled = true;
+      $('eq-switch').checked = true;
+      toast('均衡器已开启');
+    } else if (parts[2] === 'OFF') {
+      eqEnabled = false;
+      $('eq-switch').checked = false;
+      toast('均衡器已关闭');
+    }
+    updateEqHint();
+    return;
+  }
+
+  // OK PRESET n (response from EQ PRESET command)
+  if (parts[0] === 'OK' && parts[1] === 'PRESET') {
+    toast('已切换预设: ' + getPresetName(parts[2]));
+    setTimeout(() => sendCmd('EQ STATUS'), 100);
+    return;
+  }
+
+  // OK Bx GAIN / FREQ / Q confirmation (refresh corresponding band)
+  if (parts[0] === 'OK' && parts[1] && parts[1].match(/^B\d$/)) {
+    // Refresh from device after individual band change
+    setTimeout(() => sendCmd('EQ STATUS'), 50);
+    return;
+  }
+
+  // ── EQ STATUS responses ──
+  // EQ: ON/OFF
+  if (line.startsWith('EQ:')) {
+    eqEnabled = line.includes('ON');
+    $('eq-switch').checked = eqEnabled;
+    updateEqHint();
+    return;
+  }
+
+  // BAND n: freq=xxx gain=xxx Q=xxx
+  if (line.startsWith('BAND')) {
+    const m = line.match(/BAND\s+(\d+):\s*freq=(\d+)\s+gain=(-?\d+)\s+Q=(\d+)/);
+    if (m) {
+      const i = parseInt(m[1]) - 1;
+      if (i >= 0 && i < EQ_BANDS_COUNT) {
+        eqFreqs[i] = parseInt(m[2]);
+        // gain_db_x10: e.g. -20 means -2.0 dB, 50 means +5.0 dB
+        // Convert gain_db_x10 to integer dB for slider (round)
+        const rawGain = parseInt(m[3]);
+        eqGains[i] = Math.round(rawGain / 10);
+        eqQ[i] = parseInt(m[4]) / 100;
+        updateEqBandUI(i);
+        updateFreqBandUI(i);
+        updateQBandUI(i);
+      }
+    }
+    return;
+  }
+
+  // VOL: n (from STATUS or EQ STATUS)
+  if (line.startsWith('VOL:')) {
+    const v = parseInt(line.split(':')[1]);
+    if (!isNaN(v)) {
+      $('vol-slider').value = v;
+      $('vol-value').textContent = v;
+    }
+    return;
+  }
+
+  // OK PLAY/PAUSE/NEXT/PREV
+  if (parts[0] === 'OK' && (parts[1] === 'PLAY' || parts[1] === 'PAUSE' ||
+      parts[1] === 'NEXT' || parts[1] === 'PREV')) {
+    // Refresh player state after control
+    setTimeout(() => sendCmd('STATUS'), 300);
+    return;
+  }
+}
+
+function getPresetName(n) {
+  return ['平坦', '摇滚', '流行', '爵士', '古典', '电子', '乡村', '人声增强', '低音炮', 'HiFi'][parseInt(n)] || ('预设' + n);
+}
+
+// ═══════════════════════════════════════════════════════
+// Console
+// ═══════════════════════════════════════════════════════
+function consolePrint(type, msg) {
+  const box = $('console-box');
+  const line = document.createElement('div');
+  line.className = type;
+  const prefix = type === 'tx' ? '▶ ' : type === 'rx' ? '◀ ' : '⚙ ';
+  line.textContent = prefix + msg;
+  box.appendChild(line);
+  // Keep console from growing unbounded
+  while (box.children.length > 500) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+
+$('cmd-send').addEventListener('click', () => {
+  const cmd = $('cmd-input').value.trim();
+  if (cmd) {
+    sendCmd(cmd);
+    $('cmd-input').value = '';
+  }
+});
+
+$('cmd-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') $('cmd-send').click();
+});
+
+// ═══════════════════════════════════════════════════════
+// Player Controls
+// ═══════════════════════════════════════════════════════
+$('btn-play').addEventListener('click', () => {
+  isPlaying = !isPlaying;
+  $('btn-play').textContent = isPlaying ? '⏸' : '▶';
+  $('album-art').classList.toggle('playing', isPlaying);
+  sendCmd(isPlaying ? 'PLAY' : 'PAUSE');
+});
+
+$('btn-prev').addEventListener('click', () => sendCmd('PREV'));
+$('btn-next').addEventListener('click', () => sendCmd('NEXT'));
+
+// Volume
+let volDebounce = null;
+$('vol-slider').addEventListener('input', () => {
+  const v = $('vol-slider').value;
+  $('vol-value').textContent = v;
+  clearTimeout(volDebounce);
+  volDebounce = setTimeout(() => sendCmd('VOL ' + v), 150);
+});
+
+// ═══════════════════════════════════════════════════════
+// EQ Controls
+// ═══════════════════════════════════════════════════════
+
+// Build EQ band sliders (gain)
+function buildEqBands() {
+  const container = $('eq-bands');
+  container.innerHTML = '';
+  for (let i = 0; i < EQ_BANDS_COUNT; i++) {
+    const band = document.createElement('div');
+    band.className = 'eq-band';
+    band.innerHTML = `
+      <div class="eq-gain-label" id="eq-gain-${i}">0 dB</div>
+      <div class="eq-slider-container">
+        <div class="eq-zero-line"></div>
+        <input type="range" class="eq-slider" id="eq-slider-${i}"
+               min="-12" max="12" step="1" value="0">
+      </div>
+      <div class="eq-band-label">B${i + 1}</div>
+      <div class="eq-freq-label" id="eq-freq-${i}">${formatFreq(defaultFreqs[i])}</div>
+    `;
+    container.appendChild(band);
+
+    const slider = band.querySelector('.eq-slider');
+    slider.addEventListener('input', () => {
+      eqGains[i] = parseInt(slider.value);
+      updateEqBandUI(i);
+    });
+    slider.addEventListener('change', () => {
+      // gain_db_x10 = slider_dB * 10  (e.g. +3 dB → 30)
+      const raw = eqGains[i] * 10;
+      sendCmd('EQ BAND ' + (i + 1) + ' ' + raw);
+    });
+  }
+}
+
+function updateEqBandUI(i) {
+  const slider = $('eq-slider-' + i);
+  const label = $('eq-gain-' + i);
+  const freqLabel = $('eq-freq-' + i);
+  if (slider) slider.value = eqGains[i];
+  if (label) {
+    const g = eqGains[i];
+    label.textContent = (g >= 0 ? '+' : '') + g + ' dB';
+    label.style.color = g > 0 ? 'var(--accent)' : g < 0 ? 'var(--danger)' : 'var(--text-dim)';
+  }
+  if (freqLabel) freqLabel.textContent = formatFreq(eqFreqs[i]);
+  if (gCtx) drawEqGraph();
+}
+
+function formatFreq(hz) {
+  if (hz >= 1000) {
+    const k = hz / 1000;
+    return (k === Math.floor(k)) ? k + 'k' : k.toFixed(1) + 'k';
+  }
+  return hz + '';
+}
+
+// ═══════════════════════════════════════════════════════
+// Parametric EQ Graph
+// ═══════════════════════════════════════════════════════
+const BAND_COLORS = ['#ff6b6b', '#feca57', '#00b894', '#48dbfb', '#a29bfe'];
+const FILTER_TYPES = ['lowshelf', 'peaking', 'peaking', 'peaking', 'highshelf'];
+const GRAPH_FS = 44100;
+const DB_RANGE = 15;
+const FREQ_LO = 20, FREQ_HI = 20000;
+const GPAD = { top: 18, right: 14, bottom: 26, left: 34 };
+let gCanvas, gCtx, gW, gH;
+let gDragBand = -1, gHoverBand = -1;
+let gDragStartFreq = 0, gDragStartGain = 0;
+
+function initEqGraph() {
+  gCanvas = document.getElementById('eq-graph-canvas');
+  gCtx = gCanvas.getContext('2d');
+  resizeEqGraph();
+  drawEqGraph();
+  gCanvas.addEventListener('pointerdown', onGraphDown);
+  gCanvas.addEventListener('pointermove', onGraphMove);
+  gCanvas.addEventListener('pointerup', onGraphUp);
+  gCanvas.addEventListener('pointerleave', onGraphLeave);
+  window.addEventListener('resize', () => { resizeEqGraph(); drawEqGraph(); });
+}
+
+function resizeEqGraph() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = gCanvas.getBoundingClientRect();
+  gCanvas.width = rect.width * dpr;
+  gCanvas.height = rect.height * dpr;
+  gCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  gW = rect.width;
+  gH = rect.height;
+}
+
+function gPlotW() { return gW - GPAD.left - GPAD.right; }
+function gPlotH() { return gH - GPAD.top - GPAD.bottom; }
+
+function freqToX(f) {
+  return GPAD.left + Math.log10(f / FREQ_LO) / Math.log10(FREQ_HI / FREQ_LO) * gPlotW();
+}
+function xToFreq(x) {
+  const r = (x - GPAD.left) / gPlotW();
+  return FREQ_LO * Math.pow(FREQ_HI / FREQ_LO, Math.max(0, Math.min(1, r)));
+}
+function gainToY(db) {
+  return GPAD.top + (DB_RANGE - db) / (2 * DB_RANGE) * gPlotH();
+}
+function yToGain(y) {
+  return DB_RANGE - (y - GPAD.top) / gPlotH() * (2 * DB_RANGE);
+}
+
+function getLogFreqs(n) {
+  const arr = [];
+  const logLo = Math.log10(FREQ_LO), logHi = Math.log10(FREQ_HI);
+  for (let i = 0; i <= n; i++) arr.push(Math.pow(10, logLo + (i / n) * (logHi - logLo)));
+  return arr;
+}
+
+function calcBiquadCoeffs(type, freq, gainDb, Q, Fs) {
+  const w0 = 2 * Math.PI * freq / Fs;
+  const A = Math.pow(10, gainDb / 40);
+  const sinW = Math.sin(w0), cosW = Math.cos(w0);
+  const alpha = sinW / (2 * Q);
+  let b0, b1, b2, a0, a1, a2;
+  if (type === 'peaking') {
+    b0 = 1 + alpha * A; b1 = -2 * cosW; b2 = 1 - alpha * A;
+    a0 = 1 + alpha / A; a1 = -2 * cosW; a2 = 1 - alpha / A;
+  } else if (type === 'lowshelf') {
+    const sq = 2 * Math.sqrt(A) * alpha;
+    b0 = A*((A+1)-(A-1)*cosW+sq); b1 = 2*A*((A-1)-(A+1)*cosW); b2 = A*((A+1)-(A-1)*cosW-sq);
+    a0 = (A+1)+(A-1)*cosW+sq; a1 = -2*((A-1)+(A+1)*cosW); a2 = (A+1)+(A-1)*cosW-sq;
+  } else {
+    const sq = 2 * Math.sqrt(A) * alpha;
+    b0 = A*((A+1)+(A-1)*cosW+sq); b1 = -2*A*((A-1)+(A+1)*cosW); b2 = A*((A+1)+(A-1)*cosW-sq);
+    a0 = (A+1)-(A-1)*cosW+sq; a1 = 2*((A-1)-(A+1)*cosW); a2 = (A+1)-(A-1)*cosW-sq;
+  }
+  return { b0:b0/a0, b1:b1/a0, b2:b2/a0, a1:a1/a0, a2:a2/a0 };
+}
+
+function evalMagDb(c, freq, Fs) {
+  const w = 2 * Math.PI * freq / Fs;
+  const cw = Math.cos(w), c2w = Math.cos(2*w), sw = Math.sin(w), s2w = Math.sin(2*w);
+  const nr = c.b0 + c.b1*cw + c.b2*c2w, ni = -(c.b1*sw + c.b2*s2w);
+  const dr = 1 + c.a1*cw + c.a2*c2w, di = -(c.a1*sw + c.a2*s2w);
+  return 10 * Math.log10(Math.max((nr*nr+ni*ni)/(dr*dr+di*di), 1e-20));
+}
+
+function drawEqGraph() {
+  if (!gCtx) return;
+  const ctx = gCtx;
+  ctx.clearRect(0, 0, gW, gH);
+
+  // Background
+  ctx.fillStyle = '#0d0d18';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(0, 0, gW, gH, 8); else ctx.rect(0, 0, gW, gH);
+  ctx.fill();
+
+  // Grid
+  ctx.lineWidth = 0.5;
+  ctx.font = '10px -apple-system, sans-serif';
+  const dbLines = [-12, -9, -6, -3, 0, 3, 6, 9, 12];
+  for (const db of dbLines) {
+    const y = gainToY(db);
+    ctx.strokeStyle = db === 0 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = db === 0 ? 1 : 0.5;
+    ctx.beginPath(); ctx.moveTo(GPAD.left, y); ctx.lineTo(gW - GPAD.right, y); ctx.stroke();
+    if (db % 6 === 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillText((db > 0 ? '+' : '') + db, GPAD.left - 4, y);
+    }
+  }
+  const fLines = [20,30,40,50,60,80,100,200,300,400,500,600,800,1000,2000,3000,4000,5000,6000,8000,10000,20000];
+  const fLabels = [20,50,100,200,500,1000,2000,5000,10000,20000];
+  ctx.lineWidth = 0.5; ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  for (const f of fLines) {
+    const x = freqToX(f);
+    ctx.beginPath(); ctx.moveTo(x, GPAD.top); ctx.lineTo(x, gH - GPAD.bottom); ctx.stroke();
+    if (fLabels.includes(f)) {
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText(formatFreq(f), x, gH - GPAD.bottom + 4);
+    }
+  }
+
+  // Compute curves
+  const freqs = getLogFreqs(256);
+  const bandMags = [];
+  const combined = new Array(freqs.length).fill(0);
+  for (let b = 0; b < EQ_BANDS_COUNT; b++) {
+    const c = calcBiquadCoeffs(FILTER_TYPES[b], eqFreqs[b], eqGains[b], eqQ[b], GRAPH_FS);
+    const m = freqs.map(f => evalMagDb(c, f, GRAPH_FS));
+    bandMags.push(m);
+    for (let j = 0; j < freqs.length; j++) combined[j] += m[j];
+  }
+
+  // Individual band curves
+  for (let b = 0; b < EQ_BANDS_COUNT; b++) {
+    ctx.save(); ctx.globalAlpha = 0.25; ctx.strokeStyle = BAND_COLORS[b]; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let j = 0; j < freqs.length; j++) {
+      const x = freqToX(freqs[j]), y = gainToY(Math.max(-DB_RANGE, Math.min(DB_RANGE, bandMags[b][j])));
+      j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke(); ctx.restore();
+  }
+
+  // Combined fill
+  const zeroY = gainToY(0);
+  ctx.save();
+  ctx.beginPath();
+  for (let j = 0; j < freqs.length; j++) {
+    const x = freqToX(freqs[j]), y = gainToY(Math.max(-DB_RANGE, Math.min(DB_RANGE, combined[j])));
+    j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.lineTo(freqToX(freqs[freqs.length-1]), zeroY);
+  ctx.lineTo(freqToX(freqs[0]), zeroY);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, GPAD.top, 0, gH - GPAD.bottom);
+  grad.addColorStop(0, 'rgba(108,92,231,0.18)'); grad.addColorStop(0.5, 'rgba(0,206,201,0.04)'); grad.addColorStop(1, 'rgba(108,92,231,0.18)');
+  ctx.fillStyle = grad; ctx.fill(); ctx.restore();
+
+  // Combined stroke
+  ctx.save(); ctx.strokeStyle = '#a29bfe'; ctx.lineWidth = 2;
+  ctx.shadowColor = 'rgba(162,155,254,0.5)'; ctx.shadowBlur = 6;
+  ctx.beginPath();
+  for (let j = 0; j < freqs.length; j++) {
+    const x = freqToX(freqs[j]), y = gainToY(Math.max(-DB_RANGE, Math.min(DB_RANGE, combined[j])));
+    j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke(); ctx.restore();
+
+  // Control points
+  for (let b = 0; b < EQ_BANDS_COUNT; b++) {
+    const x = freqToX(eqFreqs[b]), y = gainToY(eqGains[b]);
+    const r = (b === gDragBand || b === gHoverBand) ? 11 : 7;
+    ctx.save();
+    ctx.shadowColor = BAND_COLORS[b]; ctx.shadowBlur = (b === gDragBand) ? 14 : 6;
+    ctx.fillStyle = BAND_COLORS[b];
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(b + 1, x, y);
+  }
+
+  // Tooltip
+  const tb = gDragBand >= 0 ? gDragBand : gHoverBand;
+  if (tb >= 0) {
+    const x = freqToX(eqFreqs[tb]), y = gainToY(eqGains[tb]);
+    const g = eqGains[tb];
+    const text = 'B' + (tb+1) + ': ' + formatFreq(eqFreqs[tb]) + 'Hz  ' + (g >= 0 ? '+' : '') + g + 'dB';
+    ctx.font = '11px -apple-system, sans-serif';
+    const tw = ctx.measureText(text).width;
+    const tx = Math.min(Math.max(x - tw/2 - 8, 2), gW - tw - 20);
+    const ty = y < 50 ? y + 18 : y - 34;
+    ctx.fillStyle = 'rgba(30,30,50,0.88)';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(tx, ty, tw + 16, 22, 6); else ctx.rect(tx, ty, tw + 16, 22);
+    ctx.fill();
+    ctx.strokeStyle = BAND_COLORS[tb]; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, tx + 8, ty + 11);
+  }
+}
+
+function getGraphPos(e) {
+  const rect = gCanvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+function findNearBand(pos) {
+  let best = -1, minD = 28;
+  for (let b = 0; b < EQ_BANDS_COUNT; b++) {
+    const d = Math.hypot(pos.x - freqToX(eqFreqs[b]), pos.y - gainToY(eqGains[b]));
+    if (d < minD) { minD = d; best = b; }
+  }
+  return best;
+}
+function onGraphDown(e) {
+  e.preventDefault();
+  gCanvas.setPointerCapture(e.pointerId);
+  const pos = getGraphPos(e);
+  gDragBand = findNearBand(pos);
+  if (gDragBand >= 0) {
+    gDragStartFreq = eqFreqs[gDragBand];
+    gDragStartGain = eqGains[gDragBand];
+    gCanvas.style.cursor = 'grabbing';
+  }
+  drawEqGraph();
+}
+function onGraphMove(e) {
+  e.preventDefault();
+  const pos = getGraphPos(e);
+  if (gDragBand >= 0) {
+    let f = Math.round(xToFreq(pos.x));
+    f = Math.max(20, Math.min(20000, f));
+    let g = Math.round(yToGain(pos.y));
+    g = Math.max(-12, Math.min(12, g));
+    eqFreqs[gDragBand] = f;
+    eqGains[gDragBand] = g;
+    updateEqBandUI(gDragBand);
+  } else {
+    const prev = gHoverBand;
+    gHoverBand = findNearBand(pos);
+    if (gHoverBand !== prev) drawEqGraph();
+    gCanvas.style.cursor = gHoverBand >= 0 ? 'grab' : 'crosshair';
+  }
+}
+function onGraphUp(e) {
+  if (gDragBand >= 0) {
+    const b = gDragBand;
+    if (eqFreqs[b] !== gDragStartFreq) sendCmd('EQ FREQ ' + (b+1) + ' ' + eqFreqs[b]);
+    if (eqGains[b] !== gDragStartGain) sendCmd('EQ BAND ' + (b+1) + ' ' + (eqGains[b]*10));
+    gDragBand = -1;
+    gCanvas.style.cursor = 'crosshair';
+    drawEqGraph();
+  }
+}
+function onGraphLeave(e) {
+  if (gDragBand < 0) { gHoverBand = -1; drawEqGraph(); }
+}
+
+function updateFreqBandUI(i) {
+  drawEqGraph();
+}
+
+// ═══════════════════════════════════════════════════════
+// EQ Disabled Hint
+// ═══════════════════════════════════════════════════════
+function updateEqHint() {
+  const hint = $('eq-hint');
+  const content = $('eq-content');
+  if (eqEnabled) {
+    hint.classList.remove('show');
+    if (content) content.classList.remove('eq-content-dimmed');
+  } else {
+    hint.classList.add('show');
+    if (content) content.classList.add('eq-content-dimmed');
+  }
+}
+
+// Build Q sliders
+function buildQBands() {
+  const container = $('q-bands');
+  container.innerHTML = '';
+  for (let i = 0; i < EQ_BANDS_COUNT; i++) {
+    const row = document.createElement('div');
+    row.className = 'q-band-row';
+    row.innerHTML = `
+      <span class="q-label">B${i + 1}</span>
+      <input type="range" class="q-slider" id="q-slider-${i}"
+             min="30" max="500" step="10" value="100">
+      <span class="q-value" id="q-value-${i}">1.00</span>
+      <span class="q-hint" id="q-hint-${i}">适中</span>
+    `;
+    container.appendChild(row);
+
+    const slider = row.querySelector('.q-slider');
+    slider.addEventListener('input', () => {
+      eqQ[i] = parseInt(slider.value) / 100;
+      updateQBandUI(i);
+    });
+    slider.addEventListener('change', () => {
+      const qRaw = Math.round(eqQ[i] * 100);
+      sendCmd('EQ Q ' + (i + 1) + ' ' + qRaw);
+    });
+  }
+}
+
+function updateQBandUI(i) {
+  const slider = $('q-slider-' + i);
+  const label = $('q-value-' + i);
+  const hint = $('q-hint-' + i);
+  if (slider) slider.value = Math.round(eqQ[i] * 100);
+  if (label) label.textContent = eqQ[i].toFixed(2);
+  if (hint) {
+    const q = eqQ[i];
+    if (q < 0.5) hint.textContent = '极宽';
+    else if (q < 0.8) hint.textContent = '较宽';
+    else if (q < 1.5) hint.textContent = '适中';
+    else if (q < 3.0) hint.textContent = '较窄';
+    else hint.textContent = '极窄';
+  }
+  if (gCtx) drawEqGraph();
+}
+
+// EQ toggle
+$('eq-switch').addEventListener('change', () => {
+  eqEnabled = $('eq-switch').checked;
+  sendCmd(eqEnabled ? 'EQ ON' : 'EQ OFF');
+  updateEqHint();
+});
+
+// Preset select
+$('eq-preset').addEventListener('change', () => {
+  sendCmd('EQ PRESET ' + $('eq-preset').value);
+});
+
+// ═══════════════════════════════════════════════════════
+// Init
+// ═══════════════════════════════════════════════════════
+buildEqBands();
+buildQBands();
+initEqGraph();
+updateEqHint();
+setConnected(false);
+
+if (!navigator.bluetooth) {
+  toast('⚠️ 当前浏览器不支持 Web Bluetooth，请使用 Chrome/Edge', 5000);
+  consolePrint('sys', '浏览器不支持 Web Bluetooth API。请使用 Chrome 或 Edge (桌面端/Android)。');
+}
+</script>
+</body>
+</html>

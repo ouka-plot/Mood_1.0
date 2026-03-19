@@ -8,12 +8,12 @@
 - 使用 ES8388 + I2S 进行音频编解码与输出
 - 使用 LVGL 图形界面显示歌曲名、时间、进度和 EQ 页面
 - 支持按键控制上一曲、下一曲、暂停/播放和重新播放
-- 支持音频监听、频谱分析、降噪、特征提取和 TinyML 分类任务
+- 支持频谱分析、录音、EQ 调节与 BLE 控制
 - 支持串口 EQ 控制，并可通过 nRF52832 BLE bridge 进行无线下发
 
 ## 目录结构
 
-- `User/APP`：应用层逻辑，包括播放器、EQ、监听、TinyML、UI bridge
+- `User/APP`：应用层逻辑，包括播放器、EQ、录音、UI bridge
 - `Drivers`：STM32 HAL、BSP 和系统底层驱动
 - `Middlewares`：FATFS、WAV 解码、LVGL、USMART 等中间件
 - `UI`：LVGL 生成界面与自定义界面代码

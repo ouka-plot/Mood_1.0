@@ -76,6 +76,7 @@
 
 extern void (*i2s_tx_callback)(void);   /* I2S TX回调函数指针  */
 extern void (*i2s_rx_callback)(void);   /* I2S RX回调函数指针  */
+extern I2S_HandleTypeDef g_i2s_handle;  /* I2S句柄 */
 
 void i2s_init(uint32_t i2s_standard, uint32_t i2s_mode, uint32_t i2s_clock_polarity, uint32_t i2s_dataformat);  /* I2S初始化 */
 void i2s_dma_enable(void);      /* 开启I2S的DMA功能 */
