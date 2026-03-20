@@ -23,12 +23,30 @@
 
 #define EQ_CTRL_LINE_MAX_LEN             96U
 
+/*
+ * 本模块通过 USART2 暴露一个简单的文本命令接口，便于上位机、串口调试助手
+ * 或外部 MCU 在运行时控制播放器和 EQ 参数。
+ *
+ * 协议特点：
+ * 1. 一条命令一行，以 '\n' 或串口 IDLE 空闲中断作为一帧结束标志。
+ * 2. 中断里只负责“收字节 + 组包”，真正的命令解析放到轮询函数中完成。
+ * 3. 这样可以避免在中断里执行耗时逻辑，也避免在高优先级中断里调用 FreeRTOS API。
+ */
 static UART_HandleTypeDef s_eq_uart_handle;
-static volatile uint8_t s_rx_line_ready;
-static char s_rx_line[EQ_CTRL_LINE_MAX_LEN];
-static char s_ready_line[EQ_CTRL_LINE_MAX_LEN];
-static volatile uint16_t s_rx_line_len;
+static volatile uint8_t s_rx_line_ready;              /* 置 1 表示收到一整行，等待主循环/任务解析 */
+static char s_rx_line[EQ_CTRL_LINE_MAX_LEN];          /* 中断接收缓冲区：逐字节累积当前命令 */
+static char s_ready_line[EQ_CTRL_LINE_MAX_LEN];       /* 解析缓冲区：从中断缓冲拷贝出的稳定副本 */
+static volatile uint16_t s_rx_line_len;               /* 当前正在接收的命令长度 */
 
+
+/*
+ * 发送当前 EQ 状态快照。
+ *
+ * 输出格式为多行文本，便于串口助手直接查看，也便于上位机逐行解析：
+ * - EQ 总开关状态
+ * - 每个频段的中心频率、增益、Q 值
+ * - 当前 UI 侧维护的音量
+ */
 static void eq_ctrl_uart_send_status(void)
 {
     audio_eq_status_t status;
@@ -64,23 +82,28 @@ void eq_ctrl_uart_send_player_status(void)
 {
     char buffer[96];
 
+    /* 当前歌曲名称，由音频任务/界面桥接层维护。 */
     snprintf(buffer, sizeof(buffer), "SONG: %s\r\n", g_audio_ui.song_name);
     eq_ctrl_uart_send_text(buffer);
 
+    /* 当前曲目序号 / 总曲目数。 */
     snprintf(buffer, sizeof(buffer), "TRACK: %u/%u\r\n",
              (unsigned int)g_audio_ui.cur_index,
              (unsigned int)g_audio_ui.total_files);
     eq_ctrl_uart_send_text(buffer);
 
+    /* 播放进度：当前秒数、总秒数。 */
     snprintf(buffer, sizeof(buffer), "TIME: %lu %lu\r\n",
              (unsigned long)g_audio_ui.cur_time,
              (unsigned long)g_audio_ui.total_time);
     eq_ctrl_uart_send_text(buffer);
 
+    /* 是否处于播放态，通常 1=播放中，0=暂停/停止。 */
     snprintf(buffer, sizeof(buffer), "PLAYING: %u\r\n",
              (unsigned int)g_audio_ui.is_playing);
     eq_ctrl_uart_send_text(buffer);
 
+    /* 当前 UI 音量值，范围由上层约定为 0~100。 */
     snprintf(buffer, sizeof(buffer), "VOL: %u\r\n",
              (unsigned int)g_audio_ui.vol_level);
     eq_ctrl_uart_send_text(buffer);
@@ -109,6 +132,12 @@ static void eq_ctrl_uart_send_error(const char *reason)
 
 static void eq_ctrl_uart_format_gain_db(char *buffer, size_t buffer_size, int16_t gain_db_x10)
 {
+    /*
+     * 增益内部以 0.1dB 为单位保存，例如：
+     *   15  -> +1.5dB
+     *  -20  -> -2.0dB
+     * 这里统一格式化成更适合人看的字符串。
+     */
     snprintf(buffer,
              buffer_size,
              "%c%d.%ddB",
@@ -119,13 +148,19 @@ static void eq_ctrl_uart_format_gain_db(char *buffer, size_t buffer_size, int16_
 
 static void eq_ctrl_uart_format_q(char *buffer, size_t buffer_size, uint16_t q_x100)
 {
+    /*
+     * Q 值内部使用 x100 定点数表示，例如：
+     *  70  -> 0.70
+     * 100  -> 1.00
+     * 235  -> 2.35
+     */
     snprintf(buffer,
              buffer_size,
              "%u.%02u",
              (unsigned int)(q_x100 / 100U),
              (unsigned int)(q_x100 % 100U));
 }
-
+/* 将命令字原地转成大写，便于命令解析时忽略大小写差异。 */
 static void eq_ctrl_uart_to_upper(char *text)
 {
     while ((*text) != '\0')
@@ -140,6 +175,7 @@ static long eq_ctrl_uart_parse_long(const char *text, uint8_t *ok)
     char *end_ptr;
     long value;
 
+    /* 空指针或空字符串直接判失败，避免 strtol 接收到无效输入。 */
     if ((text == NULL) || (*text == '\0'))
     {
         *ok = 0U;
@@ -147,7 +183,11 @@ static long eq_ctrl_uart_parse_long(const char *text, uint8_t *ok)
     }
 
     value = strtol(text, &end_ptr, 10);
-    if ((*end_ptr) != '\0')
+    /*
+     * 必须整串都能被解析成十进制整数才算成功，
+     * 例如 "12abc" 会被拒绝，避免半截合法输入带来歧义。
+     */
+    if ((*end_ptr) != '\0')//end_ptr指向第一个非十进制整数
     {
         *ok = 0U;
         return 0;
@@ -157,6 +197,18 @@ static long eq_ctrl_uart_parse_long(const char *text, uint8_t *ok)
     return value;
 }
 
+/*
+ * 处理以 "EQ" 开头的二级命令。
+ *
+ * 支持的形式包括：
+ * - EQ ON / OFF / STATUS
+ * - EQ PRESET n
+ * - EQ ALL g1 g2 g3 g4 g5
+ * - EQ BAND n gain_x10
+ * - EQ FREQ n hz
+ * - EQ Q n q_x100
+ * - EQ CFG n hz q_x100
+ */
 static void eq_ctrl_uart_handle_eq_cmd(char *args)
 {
     char *subcmd;
@@ -185,8 +237,10 @@ static void eq_ctrl_uart_handle_eq_cmd(char *args)
         return;
     }
 
+    /* 二级命令同样忽略大小写，例如 eq on / EQ ON 都可接受。 */
     eq_ctrl_uart_to_upper(subcmd);
 
+    /* 直接开关 EQ 总使能，并通知 UI 刷新显示状态。 */
     if (strcmp(subcmd, "ON") == 0)
     {
         audio_eq_set_enabled(1U);
@@ -205,14 +259,15 @@ static void eq_ctrl_uart_handle_eq_cmd(char *args)
 
     if (strcmp(subcmd, "STATUS") == 0)
     {
-        eq_ctrl_uart_send_status();
+        eq_ctrl_uart_send_status();//发送all 相关参数状态
         return;
     }
 
     if (strcmp(subcmd, "PRESET") == 0)
     {
+        /* 预设命令：交给 audio_eq 层完成整组参数装载。 */
         arg1 = strtok(NULL, " ");
-        value1 = eq_ctrl_uart_parse_long(arg1, &ok);
+        value1 = eq_ctrl_uart_parse_long(arg1, &ok);//转为10进制
         if ((ok == 0U) || (audio_eq_set_preset((uint8_t)value1) == 0U))
         {
             eq_ctrl_uart_send_error("BAD_PRESET");
@@ -229,6 +284,11 @@ static void eq_ctrl_uart_handle_eq_cmd(char *args)
     {
         uint8_t band;
 
+        /*
+         * 一次性设置全部频段增益。
+         * 协议按 BAND1~BAND5 顺序依次给出 gain_x10，
+         * 如果中间缺任何一个参数，整条命令立即报错返回。
+         */
         for (band = 0U; band < AUDIO_EQ_BAND_COUNT; band++)
         {
             arg1 = strtok(NULL, " ");
@@ -270,6 +330,12 @@ static void eq_ctrl_uart_handle_eq_cmd(char *args)
 
     if ((strcmp(subcmd, "BAND") == 0) || (strcmp(subcmd, "FREQ") == 0) || (strcmp(subcmd, "Q") == 0))
     {
+        /*
+         * 这三个命令共用“频段号 + 数值”结构：
+         * - BAND n gain_x10 : 设置某一段增益
+         * - FREQ n hz       : 设置某一段中心频率
+         * - Q n q_x100      : 设置某一段 Q 值
+         */
         arg1 = strtok(NULL, " ");
         arg2 = strtok(NULL, " ");
         value1 = eq_ctrl_uart_parse_long(arg1, &ok);
@@ -322,6 +388,10 @@ static void eq_ctrl_uart_handle_eq_cmd(char *args)
 
     if (strcmp(subcmd, "CFG") == 0)
     {
+        /*
+         * CFG 命令用于同时设置某个频段的频率和 Q，
+         * 适合上位机在拖动参数时一次提交两项关联配置。
+         */
         arg1 = strtok(NULL, " ");
         arg2 = strtok(NULL, " ");
         arg3 = strtok(NULL, " ");
@@ -376,6 +446,10 @@ static void eq_ctrl_uart_handle_line(char *line)
     uint8_t ok;
     long value;
 
+    /*
+     * strtok 会原地改写字符串，因此先复制到局部缓冲区，
+     * 避免直接修改中断收上来的原始数据。
+     */
     strncpy(local_line, line, sizeof(local_line) - 1U);
     local_line[sizeof(local_line) - 1U] = '\0';
 
@@ -385,9 +459,11 @@ static void eq_ctrl_uart_handle_line(char *line)
         return;
     }
 
+    /* 首级命令同样大小写不敏感。 */
     eq_ctrl_uart_to_upper(cmd);
     args = strtok(NULL, "");
 
+    /* EQ 命令交给专门子解析器处理。 */
     if (strcmp(cmd, "EQ") == 0)
     {
         eq_ctrl_uart_handle_eq_cmd(args);
@@ -408,6 +484,10 @@ static void eq_ctrl_uart_handle_line(char *line)
 
     if (strcmp(cmd, "VOL") == 0)
     {
+        /*
+         * 串口协议音量统一使用 0~100 的线性百分比，
+         * 这里再分别映射为耳机和喇叭的硬件音量范围。
+         */
         value = eq_ctrl_uart_parse_long(args, &ok);
         if ((ok == 0U) || (value < 0) || (value > 100))
         {
@@ -450,6 +530,7 @@ static void eq_ctrl_uart_handle_line(char *line)
 
     if (strcmp(cmd, "PLAY") == 0)
     {
+        /* 通过共享 UI 命令字段通知音频任务执行播放控制。 */
         g_audio_ui.ui_cmd = UI_CMD_PLAY;
         eq_ctrl_uart_send_ok_text("PLAY");
         return;
@@ -499,15 +580,18 @@ void eq_ctrl_uart_init(uint32_t baudrate)
 {
     GPIO_InitTypeDef gpio_init_struct;
 
+    /* 上电初始化时清空软件状态，避免带入历史接收内容。 */
     memset(&s_eq_uart_handle, 0, sizeof(s_eq_uart_handle));
     memset(s_rx_line, 0, sizeof(s_rx_line));
     memset(s_ready_line, 0, sizeof(s_ready_line));
     s_rx_line_len = 0U;
     s_rx_line_ready = 0U;
 
+    /* 打开 USART2 和 GPIOA 时钟。 */
     EQ_UART_CLK_ENABLE();
     EQ_UART_GPIO_CLK_ENABLE();
 
+    /* 配置 PA2/PA3 为 USART2 的复用推挽口。 */
     gpio_init_struct.Pin = EQ_UART_TX_PIN | EQ_UART_RX_PIN;
     gpio_init_struct.Mode = GPIO_MODE_AF_PP;
     gpio_init_struct.Pull = GPIO_PULLUP;
@@ -515,6 +599,7 @@ void eq_ctrl_uart_init(uint32_t baudrate)
     gpio_init_struct.Alternate = EQ_UART_GPIO_AF;
     HAL_GPIO_Init(EQ_UART_GPIO_PORT, &gpio_init_struct);
 
+    /* 初始化串口基本参数：8N1，全双工，无硬件流控。 */
     s_eq_uart_handle.Instance = EQ_UART_INSTANCE;
     s_eq_uart_handle.Init.BaudRate = baudrate;
     s_eq_uart_handle.Init.WordLength = UART_WORDLENGTH_8B;
@@ -525,27 +610,39 @@ void eq_ctrl_uart_init(uint32_t baudrate)
     s_eq_uart_handle.Init.OverSampling = UART_OVERSAMPLING_16;
     HAL_UART_Init(&s_eq_uart_handle);
 
+    /*
+     * 打开两个中断源：
+     * 1. RXNE：每收到一个字节立刻进入中断，用于逐字节接收。
+     * 2. IDLE：当一段时间没有新字节到达时触发，可把它视为“这一行发完了”。
+     */
     __HAL_UART_ENABLE_IT(&s_eq_uart_handle, UART_IT_RXNE);
-    __HAL_UART_ENABLE_IT(&s_eq_uart_handle, UART_IT_IDLE);  /* IDLE detect for line timeout */
+    __HAL_UART_ENABLE_IT(&s_eq_uart_handle, UART_IT_IDLE);  /*  硬件 IDLE detect for line timeout */
     HAL_NVIC_SetPriority(EQ_UART_IRQn, 4, 0);  /* 高于FreeRTOS临界区屏蔽，ISR内不调用FreeRTOS API */
     HAL_NVIC_EnableIRQ(EQ_UART_IRQn);
 
+    /* 给串口对端一个明确的启动提示。 */
     eq_ctrl_uart_send_text("EQ UART READY\r\n");
 }
 
 void eq_ctrl_uart_poll(void)
 {
+    /* 没有完整命令时直接返回，避免无意义处理。 */
     if (s_rx_line_ready == 0U)
     {
         return;
     }
 
+    /*
+     * 将 ISR 侧缓冲区快速拷贝到本地稳定缓冲区后立刻清标志，
+     * 这样中断可以尽快继续接收下一条命令。
+     */
     taskENTER_CRITICAL();
     strncpy(s_ready_line, s_rx_line, sizeof(s_ready_line) - 1U);
     s_ready_line[sizeof(s_ready_line) - 1U] = '\0';
     s_rx_line_ready = 0U;
     taskEXIT_CRITICAL();
 
+    /* 在任务/主循环上下文中解析文本命令。 */
     eq_ctrl_uart_handle_line(s_ready_line);
 }
 
@@ -555,7 +652,10 @@ void eq_ctrl_uart_send_text(const char *text)
     {
         return;
     }
-
+    /*
+     * 这里采用阻塞发送：实现简单，适合低频调试/控制指令场景。
+     * 若未来串口交互更频繁，可考虑改为 DMA 或环形缓冲异步发送。
+     */
     HAL_UART_Transmit(&s_eq_uart_handle, (uint8_t *)text, (uint16_t)strlen(text), 100U);
 }
 
@@ -569,11 +669,15 @@ void USART2_IRQHandler(void)
         __HAL_UART_CLEAR_OREFLAG(&s_eq_uart_handle);
     }
 
-    /* IDLE line detected: treat as end-of-line if bytes accumulated */
+    /* 视作 帧 结束 */
     if (__HAL_UART_GET_FLAG(&s_eq_uart_handle, UART_FLAG_IDLE) != RESET)
     {
         __HAL_UART_CLEAR_IDLEFLAG(&s_eq_uart_handle);
 
+        /*
+         * 有些上位机不会主动发 '\n'，而是发送完一帧后直接停住。
+         * 利用 UART IDLE 中断可以把“总线空闲”视作一行结束。
+         */
         if ((s_rx_line_len > 0U) && (s_rx_line_ready == 0U))
         {
             s_rx_line[s_rx_line_len] = '\0';
@@ -582,11 +686,13 @@ void USART2_IRQHandler(void)
         }
         return;
     }
-
+   //接收缓冲区非空
     if (__HAL_UART_GET_FLAG(&s_eq_uart_handle, UART_FLAG_RXNE) != RESET)
     {
+        /* 直接读 DR 取走新字节，同时清除 RXNE 标志。 */
         data = (uint8_t)(s_eq_uart_handle.Instance->DR & 0xFFU);
 
+        /* 忽略 CR 和字符串结束符，只把真正的文本内容写入缓冲区。 */
         if ((data == '\r') || (data == '\0'))
         {
             return;
@@ -594,6 +700,7 @@ void USART2_IRQHandler(void)
 
         if (data == '\n')
         {
+            /* 遇到换行说明一条命令完整接收完成。 */
             if ((s_rx_line_len > 0U) && (s_rx_line_ready == 0U))
             {
                 s_rx_line[s_rx_line_len] = '\0';
@@ -612,6 +719,7 @@ void USART2_IRQHandler(void)
             }
             else
             {
+                /* 超长命令直接丢弃整行，避免写越界或得到残缺命令。 */
                 s_rx_line_len = 0U;
             }
         }

@@ -53,9 +53,10 @@ static char s_rec_fname[64];
 
 /* LED闪烁控制 */
 static uint32_t s_led_counter = 0;
-
+     //增益
 static int16_t recorder_apply_gain(int16_t sample)
 {
+
     int32_t scaled = (int32_t)sample * RECORDER_SOFT_GAIN;
 
     if (scaled > 32767)
@@ -70,7 +71,7 @@ static int16_t recorder_apply_gain(int16_t sample)
 
     return (int16_t)scaled;
 }
-
+ //噪声门
 static int16_t recorder_soft_denoise(int16_t sample)
 {
     int32_t abs_sample = (sample >= 0) ? sample : -sample;
@@ -123,7 +124,7 @@ static void recorder_gen_filename(void)
         }
         f_closedir(&dir);
     }
-    
+   // 传入文件地址
     snprintf(s_rec_fname, sizeof(s_rec_fname), "%s/REC_%04u.WAV", RECORDER_SAVE_DIR, max_idx);
 }
 
@@ -377,11 +378,11 @@ uint32_t recorder_get_data_size(void)
 void recorder_dma_callback(void)
 {
     if (I2S_RX_DMASx->CR & DMA_SxCR_CT)
-    {
+    {  //m1ar
         s_current_buf = 0;  /* DMA切到buf1，buf0可处理 */
     }
     else
-    {
+    {  //m0ar
         s_current_buf = 1;  /* DMA切到buf0，buf1可处理 */
     }
     s_buf_ready = 1;
