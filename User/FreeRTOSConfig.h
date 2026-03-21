@@ -176,6 +176,12 @@ standard names. */
 #ifndef traceISR_EXIT
     #define traceISR_EXIT()
 #endif
+#define INCLUDE_vTaskDelay                      1
+
+/* ---- SystemView ---- */
+#define INCLUDE_xTaskGetIdleTaskHandle          1
+#define INCLUDE_pxTaskGetStackStart             1
+#include "SEGGER_SYSVIEW_FreeRTOS.h"
 
 #endif /* FREERTOS_CONFIG_H */
 

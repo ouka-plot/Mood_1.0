@@ -94,7 +94,7 @@ void audio_spectrum_calc(const uint8_t *pcm_buf, uint32_t buf_size,
 
     /* 不足FFT_LEN的部分补零 */
     if (samples_needed < FFT_LEN) {
-        arm_fill_f32(0.0f, &s_  fft_in[samples_needed], FFT_LEN - samples_needed);
+        arm_fill_f32(0.0f, &s_fft_in[samples_needed], FFT_LEN - samples_needed);
     }
 
     /* ===== 2) 实数FFT ===== */

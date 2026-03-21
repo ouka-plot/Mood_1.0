@@ -10,7 +10,7 @@
  *
  ****************************************************************************************************
  */
-
+#include "SEGGER_SYSVIEW.h"
 #include "SYSTEM/sys/sys.h"
 #include "SYSTEM/usart/usart.h"
 #include "SYSTEM/delay/delay.h"
@@ -237,6 +237,10 @@ int main(void)
 				1, \
 				NULL);
 	
+
+	SEGGER_SYSVIEW_Conf();   
+    SEGGER_SYSVIEW_Start();  
+
 	vTaskStartScheduler();
 	
 	
